@@ -26,3 +26,6 @@ CLAUDE.md
 *.vscode/
 *.settings/
 
+.clangd
+main.pdf
+Practical_1A/prac_01A_*.pdf
