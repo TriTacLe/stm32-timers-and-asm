@@ -9,26 +9,23 @@
 #include "main.h"
 #include "stm32f0xx.h"
 #include <stdint.h>
-#include <stdlib.h>      // for rand()
+#include <stdlib.h> // for rand()
 
 /* Private variables ---------------------------------------------------------*/
 TIM_HandleTypeDef htim16;
 
 /* USER CODE BEGIN PV */
 // LED arrays
-GPIO_TypeDef* led_ports[8] = {GPIOB, GPIOB, GPIOB, GPIOB, GPIOB, GPIOB, GPIOB, GPIOB};
-uint16_t led_pins[8] = {GPIO_PIN_0, GPIO_PIN_1, GPIO_PIN_2, GPIO_PIN_3, GPIO_PIN_4, GPIO_PIN_5, GPIO_PIN_6, GPIO_PIN_7};
+GPIO_TypeDef *led_ports[8] = {GPIOB, GPIOB, GPIOB, GPIOB,
+                              GPIOB, GPIOB, GPIOB, GPIOB};
+uint16_t led_pins[8] = {GPIO_PIN_0, GPIO_PIN_1, GPIO_PIN_2, GPIO_PIN_3,
+                        GPIO_PIN_4, GPIO_PIN_5, GPIO_PIN_6, GPIO_PIN_7};
 
 // Timer event flag (set by ISR)
 volatile uint8_t timer_event = 0;
 
 // Mode enumeration
-typedef enum {
-    MODE_1 = 0,
-    MODE_2,
-    MODE_3,
-    MODE_OFF
-} LED_Mode;
+typedef enum { MODE_1 = 0, MODE_2, MODE_3, MODE_OFF } LED_Mode;
 volatile LED_Mode current_mode = MODE_OFF;
 
 // Mode 1 & 2 shared variables
@@ -38,13 +35,13 @@ volatile int8_t direction = 1;
 // Speed toggle variables
 #define DEBOUNCE_MS 50
 uint32_t last_button_time[4] = {0, 0, 0, 0};
-uint8_t speed_state = 0;        // 0 = slow (1s), 1 = fast (0.5s)
+uint8_t speed_state = 0; // 0 = slow (1s), 1 = fast (0.5s)
 
 // Mode 3 state machine
 typedef enum {
-    SPARKLE_IDLE = 0,
-    SPARKLE_DISPLAY,
-    SPARKLE_TURN_OFF
+  SPARKLE_IDLE = 0,
+  SPARKLE_DISPLAY,
+  SPARKLE_TURN_OFF
 } SparkleState;
 
 volatile SparkleState sparkle_state = SPARKLE_IDLE;
@@ -52,7 +49,7 @@ volatile uint8_t sparkle_pattern = 0;
 volatile uint32_t sparkle_display_until = 0;
 volatile uint32_t sparkle_next_off_time = 0;
 volatile uint8_t sparkle_off_index = 0;
-volatile uint8_t sparkle_leds_on[8];      // Track which LEDs are currently on
+volatile uint8_t sparkle_leds_on[8]; // Track which LEDs are currently on
 volatile uint8_t sparkle_num_leds_on = 0;
 
 // Current period reference
@@ -78,159 +75,152 @@ void mode3_update(void);
 /* USER CODE END PFP */
 
 /* USER CODE BEGIN 0 */
-void clear_all_leds(void)
-{
-    for (uint8_t i = 0; i < 8; i++) {
-        HAL_GPIO_WritePin(led_ports[i], led_pins[i], GPIO_PIN_RESET);
+void clear_all_leds(void) {
+  for (uint8_t i = 0; i < 8; i++) {
+    HAL_GPIO_WritePin(led_ports[i], led_pins[i], GPIO_PIN_RESET);
+  }
+}
+
+void turn_on_led(uint8_t index) {
+  HAL_GPIO_WritePin(led_ports[index], led_pins[index], GPIO_PIN_SET);
+}
+
+void turn_off_led(uint8_t index) {
+  HAL_GPIO_WritePin(led_ports[index], led_pins[index], GPIO_PIN_RESET);
+}
+
+void change_timer_period(uint32_t new_period_ms) {
+  // Timer clock is 1000 Hz (prescaler 7999), so one count = 1 ms
+  uint32_t new_arr = new_period_ms - 1;
+
+  TIM16->ARR = new_arr; // lands in the preload register (ARPE = 1)
+  TIM16->CNT = 0;       // restart the current cycle
+
+  current_period_ms = new_period_ms;
+}
+
+void handle_buttons(void) {
+  uint32_t now = HAL_GetTick();
+
+  // All four buttons are active low on PA0..PA3
+  uint16_t button_pins[4] = {GPIO_PIN_0, GPIO_PIN_1, GPIO_PIN_2, GPIO_PIN_3};
+  static GPIO_PinState prev_state[4] = {GPIO_PIN_SET, GPIO_PIN_SET,
+                                        GPIO_PIN_SET, GPIO_PIN_SET};
+
+  for (uint8_t b = 0; b < 4; b++) {
+    GPIO_PinState state = HAL_GPIO_ReadPin(GPIOA, button_pins[b]);
+
+    // Falling edge + per-button debounce window
+    if (state == GPIO_PIN_RESET && prev_state[b] == GPIO_PIN_SET &&
+        (now - last_button_time[b]) >= DEBOUNCE_MS) {
+      last_button_time[b] = now;
+
+      switch (b) {
+      case 0: // PA0: speed toggle, works in every mode
+        speed_state ^= 1;
+        change_timer_period(speed_state ? 500 : 1000);
+        break;
+      case 1: // PA1: running light
+        set_mode(MODE_1);
+        break;
+      case 2: // PA2: inverse running light
+        set_mode(MODE_2);
+        break;
+      case 3: // PA3: sparkle
+        set_mode(MODE_3);
+        break;
+      }
     }
+    prev_state[b] = state;
+  }
 }
 
-void turn_on_led(uint8_t index)
-{
-    HAL_GPIO_WritePin(led_ports[index], led_pins[index], GPIO_PIN_SET);
+void set_mode(LED_Mode new_mode) {
+  current_mode = new_mode;
+
+  clear_all_leds();
+
+  current_led = 0;
+  direction = 1;
+  sparkle_state = SPARKLE_IDLE;
+  sparkle_num_leds_on = 0;
+  sparkle_off_index = 0;
 }
 
-void turn_off_led(uint8_t index)
-{
-    HAL_GPIO_WritePin(led_ports[index], led_pins[index], GPIO_PIN_RESET);
-}
+void mode1_update(void) {
+  clear_all_leds();
+  turn_on_led(current_led);
 
-void change_timer_period(uint32_t new_period_ms)
-{
-    // Timer clock is 1000 Hz (prescaler 7999), so one count = 1 ms
-    uint32_t new_arr = new_period_ms - 1;
-
-    TIM16->ARR = new_arr;   // lands in the preload register (ARPE = 1)
-    TIM16->CNT = 0;         // restart the current cycle
-
-    current_period_ms = new_period_ms;
-}
-
-void handle_buttons(void)
-{
-    uint32_t now = HAL_GetTick();
-
-    // All four buttons are active low on PA0..PA3
-    uint16_t button_pins[4] = {GPIO_PIN_0, GPIO_PIN_1, GPIO_PIN_2, GPIO_PIN_3};
-    static GPIO_PinState prev_state[4] = {GPIO_PIN_SET, GPIO_PIN_SET,
-                                          GPIO_PIN_SET, GPIO_PIN_SET};
-
-    for (uint8_t b = 0; b < 4; b++) {
-        GPIO_PinState state = HAL_GPIO_ReadPin(GPIOA, button_pins[b]);
-
-        // Falling edge + per-button debounce window
-        if (state == GPIO_PIN_RESET && prev_state[b] == GPIO_PIN_SET
-            && (now - last_button_time[b]) >= DEBOUNCE_MS) {
-            last_button_time[b] = now;
-
-            switch (b) {
-                case 0:   // PA0: speed toggle, works in every mode
-                    speed_state ^= 1;
-                    change_timer_period(speed_state ? 500 : 1000);
-                    break;
-                case 1:   // PA1: running light
-                    set_mode(MODE_1);
-                    break;
-                case 2:   // PA2: inverse running light
-                    set_mode(MODE_2);
-                    break;
-                case 3:   // PA3: sparkle
-                    set_mode(MODE_3);
-                    break;
-            }
-        }
-        prev_state[b] = state;
-    }
-}
-
-void set_mode(LED_Mode new_mode)
-{
-    current_mode = new_mode;
-
-    clear_all_leds();
-
-    current_led = 0;
+  if (current_led == 7) {
+    direction = -1;
+  } else if (current_led == 0) {
     direction = 1;
-    sparkle_state = SPARKLE_IDLE;
+  }
+  current_led += direction;
+}
+
+void mode2_update(void) {
+  // All LEDs on except the moving one
+  for (uint8_t i = 0; i < 8; i++) {
+    if (i == current_led)
+      turn_off_led(i);
+    else
+      turn_on_led(i);
+  }
+
+  if (current_led == 7) {
+    direction = -1;
+  } else if (current_led == 0) {
+    direction = 1;
+  }
+  current_led += direction;
+}
+
+void mode3_update(void) {
+  uint32_t now = HAL_GetTick();
+
+  switch (sparkle_state) {
+  case SPARKLE_IDLE:
+    sparkle_pattern = (uint8_t)(rand() & 0xFF);
+
     sparkle_num_leds_on = 0;
-    sparkle_off_index = 0;
-}
-
-void mode1_update(void)
-{
-    clear_all_leds();
-    turn_on_led(current_led);
-
-    if (current_led == 7) {
-        direction = -1;
-    } else if (current_led == 0) {
-        direction = 1;
-    }
-    current_led += direction;
-}
-
-void mode2_update(void)
-{
-    // All LEDs on except the moving one
     for (uint8_t i = 0; i < 8; i++) {
-        if (i == current_led) turn_off_led(i);
-        else                  turn_on_led(i);
+      if (sparkle_pattern & (1 << i)) {
+        turn_on_led(i);
+        sparkle_leds_on[sparkle_num_leds_on++] = i;
+      }
     }
 
-    if (current_led == 7) {
-        direction = -1;
-    } else if (current_led == 0) {
-        direction = 1;
+    // Hold the pattern for 100 to 1500 ms
+    sparkle_display_until = now + 100 + (uint32_t)(rand() % 1401);
+    sparkle_off_index = 0;
+    sparkle_state = SPARKLE_DISPLAY;
+    break;
+
+  case SPARKLE_DISPLAY:
+    if (now >= sparkle_display_until) {
+      // First turn-off happens after its own random 100 to 150 ms delay
+      sparkle_next_off_time = now + 100 + (uint32_t)(rand() % 51);
+      sparkle_state = SPARKLE_TURN_OFF;
     }
-    current_led += direction;
-}
+    break;
 
-void mode3_update(void)
-{
-    uint32_t now = HAL_GetTick();
-
-    switch (sparkle_state) {
-        case SPARKLE_IDLE:
-            sparkle_pattern = (uint8_t)(rand() & 0xFF);
-
-            sparkle_num_leds_on = 0;
-            for (uint8_t i = 0; i < 8; i++) {
-                if (sparkle_pattern & (1 << i)) {
-                    turn_on_led(i);
-                    sparkle_leds_on[sparkle_num_leds_on++] = i;
-                }
-            }
-
-            // Hold the pattern for 100 to 1500 ms
-            sparkle_display_until = now + 100 + (uint32_t)(rand() % 1401);
-            sparkle_off_index = 0;
-            sparkle_state = SPARKLE_DISPLAY;
-            break;
-
-        case SPARKLE_DISPLAY:
-            if (now >= sparkle_display_until) {
-                // First turn-off happens after its own random 100 to 150 ms delay
-                sparkle_next_off_time = now + 100 + (uint32_t)(rand() % 51);
-                sparkle_state = SPARKLE_TURN_OFF;
-            }
-            break;
-
-        case SPARKLE_TURN_OFF:
-            if (sparkle_off_index >= sparkle_num_leds_on) {
-                // All LEDs from the pattern are off, start a fresh cycle
-                sparkle_state = SPARKLE_IDLE;
-                break;
-            }
-            if (now >= sparkle_next_off_time) {
-                turn_off_led(sparkle_leds_on[sparkle_off_index++]);
-                sparkle_next_off_time = now + 100 + (uint32_t)(rand() % 51);
-            }
-            break;
-
-        default:
-            sparkle_state = SPARKLE_IDLE;
-            break;
+  case SPARKLE_TURN_OFF:
+    if (sparkle_off_index >= sparkle_num_leds_on) {
+      // All LEDs from the pattern are off, start a fresh cycle
+      sparkle_state = SPARKLE_IDLE;
+      break;
     }
+    if (now >= sparkle_next_off_time) {
+      turn_off_led(sparkle_leds_on[sparkle_off_index++]);
+      sparkle_next_off_time = now + 100 + (uint32_t)(rand() % 51);
+    }
+    break;
+
+  default:
+    sparkle_state = SPARKLE_IDLE;
+    break;
+  }
 }
 /* USER CODE END 0 */
 
@@ -238,142 +228,140 @@ void mode3_update(void)
   @brief  The application entry point.
   @retval int
 */
-int main(void)
-{
-    HAL_Init();
-    SystemClock_Config();
-    MX_GPIO_Init();
-    MX_TIM16_Init();
+int main(void) {
+  HAL_Init();
+  SystemClock_Config();
+  MX_GPIO_Init();
+  MX_TIM16_Init();
 
-    /* USER CODE BEGIN 2 */
-    // Seed random number generator
-    srand(HAL_GetTick());
-    
-    clear_all_leds();
-    change_timer_period(1000);
-    HAL_TIM_Base_Start_IT(&htim16);
-    /* USER CODE END 2 */
+  /* USER CODE BEGIN 2 */
+  // Seed random number generator
+  srand(HAL_GetTick());
 
-    while (1)
-    {
-        /* USER CODE BEGIN WHILE */
-        // Check for debounced button presses
-        handle_buttons();
+  clear_all_leds();
+  change_timer_period(1000);
+  HAL_TIM_Base_Start_IT(&htim16);
+  /* USER CODE END 2 */
 
-        // Handle scheduled timer events for Mode 1 and Mode 2
-        if (timer_event) {
-            timer_event = 0;
+  while (1) {
+    /* USER CODE BEGIN WHILE */
+    // Check for debounced button presses
+    handle_buttons();
 
-            switch (current_mode) {
-                case MODE_1:
-                    mode1_update();
-                    break;
-                case MODE_2:
-                    mode2_update();
-                    break;
-                case MODE_3:
-                    // Mode 3 is non-blocking and driven continuously by HAL_GetTick
-                    break;
-                case MODE_OFF:
-                default:
-                    clear_all_leds();
-                    break;
-            }
-        }
+    // Handle scheduled timer events for Mode 1 and Mode 2
+    if (timer_event) {
+      timer_event = 0;
 
-        // Mode 3 requires continuous polling to operate its state machine delays accurately
-        if (current_mode == MODE_3) {
-            mode3_update();
-        }
-        /* USER CODE END WHILE */
+      switch (current_mode) {
+      case MODE_1:
+        mode1_update();
+        break;
+      case MODE_2:
+        mode2_update();
+        break;
+      case MODE_3:
+        // Mode 3 is non-blocking and driven continuously by HAL_GetTick
+        break;
+      case MODE_OFF:
+      default:
+        clear_all_leds();
+        break;
+      }
     }
+
+    // Mode 3 requires continuous polling to operate its state machine delays
+    // accurately
+    if (current_mode == MODE_3) {
+      mode3_update();
+    }
+    /* USER CODE END WHILE */
+  }
 }
 
 /**
   @brief System Clock Configuration (HSI 8 MHz)
 */
-void SystemClock_Config(void)
-{
-    LL_FLASH_SetLatency(LL_FLASH_LATENCY_0);
-    while(LL_FLASH_GetLatency() != LL_FLASH_LATENCY_0) {}
-    
-    LL_RCC_HSI_Enable();
-    while(LL_RCC_HSI_IsReady() != 1) {}
-    
-    LL_RCC_HSI_SetCalibTrimming(16);
-    LL_RCC_SetAHBPrescaler(LL_RCC_SYSCLK_DIV_1);
-    LL_RCC_SetAPB1Prescaler(LL_RCC_APB1_DIV_1);
-    LL_RCC_SetSysClkSource(LL_RCC_SYS_CLKSOURCE_HSI);
-    while(LL_RCC_GetSysClkSource() != LL_RCC_SYS_CLKSOURCE_STATUS_HSI) {}
-    
-    LL_SetSystemCoreClock(8000000);
-    
-    if (HAL_InitTick(TICK_INT_PRIORITY) != HAL_OK) {
-        Error_Handler();
-    }
+void SystemClock_Config(void) {
+  LL_FLASH_SetLatency(LL_FLASH_LATENCY_0);
+  while (LL_FLASH_GetLatency() != LL_FLASH_LATENCY_0) {
+  }
+
+  LL_RCC_HSI_Enable();
+  while (LL_RCC_HSI_IsReady() != 1) {
+  }
+
+  LL_RCC_HSI_SetCalibTrimming(16);
+  LL_RCC_SetAHBPrescaler(LL_RCC_SYSCLK_DIV_1);
+  LL_RCC_SetAPB1Prescaler(LL_RCC_APB1_DIV_1);
+  LL_RCC_SetSysClkSource(LL_RCC_SYS_CLKSOURCE_HSI);
+  while (LL_RCC_GetSysClkSource() != LL_RCC_SYS_CLKSOURCE_STATUS_HSI) {
+  }
+
+  LL_SetSystemCoreClock(8000000);
+
+  if (HAL_InitTick(TICK_INT_PRIORITY) != HAL_OK) {
+    Error_Handler();
+  }
 }
 
 /**
   @brief TIM16 Initialization
 */
-static void MX_TIM16_Init(void)
-{
-    htim16.Instance = TIM16;
-    htim16.Init.Prescaler = 7999;      // 8000 - 1
-    htim16.Init.CounterMode = TIM_COUNTERMODE_UP;
-    htim16.Init.Period = 999;          // Will be changed dynamically
-    htim16.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-    htim16.Init.RepetitionCounter = 0;
-    htim16.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
-    
-    if (HAL_TIM_Base_Init(&htim16) != HAL_OK) {
-        Error_Handler();
-    }
-    
-    NVIC_EnableIRQ(TIM16_IRQn);
+static void MX_TIM16_Init(void) {
+  htim16.Instance = TIM16;
+  htim16.Init.Prescaler = 7999; // 8000 - 1
+  htim16.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim16.Init.Period = 999; // Will be changed dynamically
+  htim16.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim16.Init.RepetitionCounter = 0;
+  htim16.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+
+  if (HAL_TIM_Base_Init(&htim16) != HAL_OK) {
+    Error_Handler();
+  }
+
+  NVIC_EnableIRQ(TIM16_IRQn);
 }
 
 /**
   @brief GPIO Initialization
 */
-static void MX_GPIO_Init(void)
-{
-    __HAL_RCC_GPIOA_CLK_ENABLE();
-    __HAL_RCC_GPIOB_CLK_ENABLE();
-    
-    GPIO_InitTypeDef GPIO_InitStruct = {0};
-    
-    // LEDs PB0..PB7 as outputs
-    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-    
-    for (uint8_t i = 0; i < 8; i++) {
-        GPIO_InitStruct.Pin = led_pins[i];
-        HAL_GPIO_Init(led_ports[i], &GPIO_InitStruct);
-    }
-    
-    // Buttons PA0..PA3 as inputs with pull-up (active low)
-    GPIO_InitStruct.Pin = GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3;
-    GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-    GPIO_InitStruct.Pull = GPIO_PULLUP;
-    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+static void MX_GPIO_Init(void) {
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
+
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+  // LEDs PB0..PB7 as outputs
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+
+  for (uint8_t i = 0; i < 8; i++) {
+    GPIO_InitStruct.Pin = led_pins[i];
+    HAL_GPIO_Init(led_ports[i], &GPIO_InitStruct);
+  }
+
+  // Buttons PA0..PA3 as inputs with pull-up (active low)
+  GPIO_InitStruct.Pin = GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 }
 
 /**
   @brief TIM16 interrupt handler - sets flag only
 */
-void TIM16_IRQHandler(void)
-{
-    HAL_TIM_IRQHandler(&htim16);
-    timer_event = 1;
+void TIM16_IRQHandler(void) {
+  HAL_TIM_IRQHandler(&htim16);
+  timer_event = 1;
 }
 
 /**
   @brief Error handler
 */
-void Error_Handler(void)
-{
-    __disable_irq();
-    while (1) {}
+void Error_Handler(void) {
+  __disable_irq();
+  while (1) {
+  }
 }

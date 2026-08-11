@@ -1,20 +1,20 @@
 /* USER CODE BEGIN Header */
 /**
-  ******************************************************************************
-  * @file           : main.c
-  * @brief          : Main program body
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2023 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
-  */
+ ******************************************************************************
+ * @file           : main.c
+ * @brief          : Main program body
+ ******************************************************************************
+ * @attention
+ *
+ * Copyright (c) 2023 STMicroelectronics.
+ * All rights reserved.
+ *
+ * This software is licensed under terms that can be found in the LICENSE file
+ * in the root directory of this software component.
+ * If no LICENSE file comes with this software, it is provided AS-IS.
+ *
+ ******************************************************************************
+ */
 /* USER CODE END Header */
 
 /* Includes ------------------------------------------------------------------*/
@@ -35,7 +35,7 @@ TIM_HandleTypeDef htim16;
 // LED toggle pin (PB0 = LED0)
 
 #define LED0_PORT GPIOB
-#define LED0_PIN  GPIO_PIN_0
+#define LED0_PIN GPIO_PIN_0
 
 /* USER CODE END PV */
 
@@ -53,11 +53,10 @@ void TIM16_IRQHandler(void);
 /* USER CODE END 0 */
 
 /**
-  * @brief  The application entry point.
-  * @retval int
-  */
-int main(void)
-{
+ * @brief  The application entry point.
+ * @retval int
+ */
+int main(void) {
   HAL_Init();
   SystemClock_Config();
 
@@ -69,28 +68,29 @@ int main(void)
   HAL_TIM_Base_Start_IT(&htim16);
   /* USER CODE END 2 */
 
-  while (1)
-  {
+  while (1) {
     // Main loop does nothing – all work is in the ISR
   }
 }
 
 /**
-  * @brief System Clock Configuration (HSI 8 MHz)
-  */
-void SystemClock_Config(void)
-{
+ * @brief System Clock Configuration (HSI 8 MHz)
+ */
+void SystemClock_Config(void) {
   LL_FLASH_SetLatency(LL_FLASH_LATENCY_0);
-  while(LL_FLASH_GetLatency() != LL_FLASH_LATENCY_0) {}
+  while (LL_FLASH_GetLatency() != LL_FLASH_LATENCY_0) {
+  }
 
   LL_RCC_HSI_Enable();
-  while(LL_RCC_HSI_IsReady() != 1) {}
+  while (LL_RCC_HSI_IsReady() != 1) {
+  }
 
   LL_RCC_HSI_SetCalibTrimming(16);
   LL_RCC_SetAHBPrescaler(LL_RCC_SYSCLK_DIV_1);
   LL_RCC_SetAPB1Prescaler(LL_RCC_APB1_DIV_1);
   LL_RCC_SetSysClkSource(LL_RCC_SYS_CLKSOURCE_HSI);
-  while(LL_RCC_GetSysClkSource() != LL_RCC_SYS_CLKSOURCE_STATUS_HSI) {}
+  while (LL_RCC_GetSysClkSource() != LL_RCC_SYS_CLKSOURCE_STATUS_HSI) {
+  }
 
   LL_SetSystemCoreClock(8000000);
   if (HAL_InitTick(TICK_INT_PRIORITY) != HAL_OK) {
@@ -99,15 +99,14 @@ void SystemClock_Config(void)
 }
 
 /**
-  * @brief TIM16 Initialization|
-  * Insert your calculated values
-  */
-static void MX_TIM16_Init(void)
-{
+ * @brief TIM16 Initialization|
+ * Insert your calculated values
+ */
+static void MX_TIM16_Init(void) {
   htim16.Instance = TIM16;
-  htim16.Init.Prescaler = 7999;      // 8 MHz / (7999+1) = 1 kHz timer clock
+  htim16.Init.Prescaler = 7999; // 8 MHz / (7999+1) = 1 kHz timer clock
   htim16.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim16.Init.Period = 999;          // 1 kHz / (999+1) = 1 Hz update event
+  htim16.Init.Period = 999; // 1 kHz / (999+1) = 1 Hz update event
   htim16.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim16.Init.RepetitionCounter = 0;
   htim16.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
@@ -118,10 +117,9 @@ static void MX_TIM16_Init(void)
 }
 
 /**
-  * @brief GPIO Initialization – PB0 as output (LED0)
-  */
-static void MX_GPIO_Init(void)
-{
+ * @brief GPIO Initialization – PB0 as output (LED0)
+ */
+static void MX_GPIO_Init(void) {
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   GPIO_InitTypeDef GPIO_InitStruct = {0};
@@ -135,19 +133,18 @@ static void MX_GPIO_Init(void)
 }
 
 /**
-  * @brief TIM16 interrupt handler – toggles PB0 each time
-  */
-void TIM16_IRQHandler(void)
-{
-  HAL_TIM_IRQHandler(&htim16);   // clears the update interrupt flag
+ * @brief TIM16 interrupt handler – toggles PB0 each time
+ */
+void TIM16_IRQHandler(void) {
+  HAL_TIM_IRQHandler(&htim16); // clears the update interrupt flag
   HAL_GPIO_TogglePin(LED0_PORT, LED0_PIN);
 }
 
 /**
-  * @brief Error handler
-  */
-void Error_Handler(void)
-{
+ * @brief Error handler
+ */
+void Error_Handler(void) {
   __disable_irq();
-  while (1) {}
+  while (1) {
+  }
 }

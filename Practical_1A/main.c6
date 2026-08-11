@@ -6,74 +6,68 @@
  */
 #include "stm32f0xx.h"
 
-#define TIM16_PSC_VALUE   7
-#define TIM16_ARR_VALUE   99
+#define TIM16_PSC_VALUE 7
+#define TIM16_ARR_VALUE 99
 
 static void GPIO_Init(void);
 static void TIM16_Init(void);
 
-int main(void)
-{
-    GPIO_Init();
-    TIM16_Init();
+int main(void) {
+  GPIO_Init();
+  TIM16_Init();
 
-    while (1)
-    {
-        /* All PWM generation happens in the ISR; main loop remains free */
+  while (1) {
+    /* All PWM generation happens in the ISR; main loop remains free */
+  }
+}
+
+static void GPIO_Init(void) {
+  RCC->AHBENR |= RCC_AHBENR_GPIOBEN;
+
+  // PB5: general purpose output (MODER5 = 01), push-pull (OTYPER = 0),
+  // medium speed (OSPEEDR5 = 01), no pull (PUPDR5 = 00)
+  GPIOB->MODER &= ~(3U << (5 * 2));
+  GPIOB->MODER |= (1U << (5 * 2));
+  GPIOB->OTYPER &= ~(1U << 5);
+  GPIOB->OSPEEDR &= ~(3U << (5 * 2));
+  GPIOB->OSPEEDR |= (1U << (5 * 2));
+  GPIOB->PUPDR &= ~(3U << (5 * 2));
+
+  GPIOB->BRR = (1U << 5); // start low
+}
+
+static void TIM16_Init(void) {
+  RCC->APB2ENR |= RCC_APB2ENR_TIM16EN;
+
+  // 8 MHz / ((7+1) * (99+1)) = 10 kHz update rate
+  TIM16->PSC = TIM16_PSC_VALUE;
+  TIM16->ARR = TIM16_ARR_VALUE;
+
+  TIM16->SR = 0;              // clear any pending update flag
+  TIM16->DIER = TIM_DIER_UIE; // update interrupt enable
+
+  NVIC_SetPriority(TIM16_IRQn, 1);
+  NVIC_EnableIRQ(TIM16_IRQn);
+
+  TIM16->CR1 |= TIM_CR1_CEN; // start counting
+}
+
+void TIM16_IRQHandler(void) {
+  static uint8_t counter = 0;
+
+  if (TIM16->SR & TIM_SR_UIF) {
+    TIM16->SR &= ~TIM_SR_UIF;
+
+    // 30 of every 100 ticks high: 100 Hz PWM at 30% duty
+    if (counter < 30) {
+      GPIOB->BSRR = (1U << 5);
+    } else {
+      GPIOB->BRR = (1U << 5);
     }
-}
 
-static void GPIO_Init(void)
-{
-    RCC->AHBENR |= RCC_AHBENR_GPIOBEN;
-
-    // PB5: general purpose output (MODER5 = 01), push-pull (OTYPER = 0),
-    // medium speed (OSPEEDR5 = 01), no pull (PUPDR5 = 00)
-    GPIOB->MODER   &= ~(3U << (5 * 2));
-    GPIOB->MODER   |=  (1U << (5 * 2));
-    GPIOB->OTYPER  &= ~(1U << 5);
-    GPIOB->OSPEEDR &= ~(3U << (5 * 2));
-    GPIOB->OSPEEDR |=  (1U << (5 * 2));
-    GPIOB->PUPDR   &= ~(3U << (5 * 2));
-
-    GPIOB->BRR = (1U << 5);   // start low
-}
-
-static void TIM16_Init(void)
-{
-    RCC->APB2ENR |= RCC_APB2ENR_TIM16EN;
-
-    // 8 MHz / ((7+1) * (99+1)) = 10 kHz update rate
-    TIM16->PSC = TIM16_PSC_VALUE;
-    TIM16->ARR = TIM16_ARR_VALUE;
-
-    TIM16->SR   = 0;              // clear any pending update flag
-    TIM16->DIER = TIM_DIER_UIE;   // update interrupt enable
-
-    NVIC_SetPriority(TIM16_IRQn, 1);
-    NVIC_EnableIRQ(TIM16_IRQn);
-
-    TIM16->CR1 |= TIM_CR1_CEN;    // start counting
-}
-
-void TIM16_IRQHandler(void)
-{
-    static uint8_t counter = 0;
-
-    if (TIM16->SR & TIM_SR_UIF)
-    {
-        TIM16->SR &= ~TIM_SR_UIF;
-
-        // 30 of every 100 ticks high: 100 Hz PWM at 30% duty
-        if (counter < 30) {
-            GPIOB->BSRR = (1U << 5);
-        } else {
-            GPIOB->BRR = (1U << 5);
-        }
-
-        counter++;
-        if (counter >= 100) {
-            counter = 0;
-        }
+    counter++;
+    if (counter >= 100) {
+      counter = 0;
     }
+  }
 }

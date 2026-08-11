@@ -5,91 +5,87 @@ static void GPIO_Init(void);
 static void ADC_Init(void);
 static void write_led_byte(uint8_t pattern);
 
-int main(void)
-{
-    HAL_Init(); // still fine to call - only sets up SysTick/core clocks
-    GPIO_Init();
-    ADC_Init();
+int main(void) {
+  HAL_Init(); // still fine to call - only sets up SysTick/core clocks
+  GPIO_Init();
+  ADC_Init();
 
-    ADC1->CR |= ADC_CR_ADSTART;   // start continuous conversions
+  ADC1->CR |= ADC_CR_ADSTART; // start continuous conversions
 
-    while (1)
-    {
-        /* everything happens in the ISR */
-    }
+  while (1) {
+    /* everything happens in the ISR */
+  }
 }
 
 /* ---------- GPIO Configuration ---------- */
-static void GPIO_Init(void)
-{
-    RCC->AHBENR |= RCC_AHBENR_GPIOAEN | RCC_AHBENR_GPIOBEN;
+static void GPIO_Init(void) {
+  RCC->AHBENR |= RCC_AHBENR_GPIOAEN | RCC_AHBENR_GPIOBEN;
 
-    // PA5 analog mode (MODER5 = 11) for ADC_IN5
-    GPIOA->MODER |= (3U << (5 * 2));
+  // PA5 analog mode (MODER5 = 11) for ADC_IN5
+  GPIOA->MODER |= (3U << (5 * 2));
 
-    // PB0-PB7 general purpose outputs (MODERx = 01), LEDs off initially
-    GPIOB->MODER &= ~0xFFFFU;
-    GPIOB->MODER |=  0x5555U;
-    GPIOB->ODR   &= ~0xFFU;
+  // PB0-PB7 general purpose outputs (MODERx = 01), LEDs off initially
+  GPIOB->MODER &= ~0xFFFFU;
+  GPIOB->MODER |= 0x5555U;
+  GPIOB->ODR &= ~0xFFU;
 }
 
 /* ---------- ADC Configuration ---------- */
-static void ADC_Init(void)
-{
-    RCC->APB2ENR |= RCC_APB2ENR_ADCEN;
+static void ADC_Init(void) {
+  RCC->APB2ENR |= RCC_APB2ENR_ADCEN;
 
-    // ADC must be disabled before calibration
-    if (ADC1->CR & ADC_CR_ADEN) {
-        ADC1->CR |= ADC_CR_ADDIS;
-        while (ADC1->CR & ADC_CR_ADEN) {}
+  // ADC must be disabled before calibration
+  if (ADC1->CR & ADC_CR_ADEN) {
+    ADC1->CR |= ADC_CR_ADDIS;
+    while (ADC1->CR & ADC_CR_ADEN) {
     }
-    ADC1->CR |= ADC_CR_ADCAL;
-    while (ADC1->CR & ADC_CR_ADCAL) {}
+  }
+  ADC1->CR |= ADC_CR_ADCAL;
+  while (ADC1->CR & ADC_CR_ADCAL) {
+  }
 
-    // Channel 5 (PA5), longest sampling time (239.5 cycles) for a clean DC read
-    ADC1->CHSELR = ADC_CHSELR_CHSEL5;
-    ADC1->SMPR   = 7U;
+  // Channel 5 (PA5), longest sampling time (239.5 cycles) for a clean DC read
+  ADC1->CHSELR = ADC_CHSELR_CHSEL5;
+  ADC1->SMPR = 7U;
 
-    // 12-bit resolution (RES = 00) and right alignment (ALIGN = 0) are the
-    // reset defaults; select continuous conversion mode
-    ADC1->CFGR1 &= ~(ADC_CFGR1_RES | ADC_CFGR1_ALIGN);
-    ADC1->CFGR1 |= ADC_CFGR1_CONT;
+  // 12-bit resolution (RES = 00) and right alignment (ALIGN = 0) are the
+  // reset defaults; select continuous conversion mode
+  ADC1->CFGR1 &= ~(ADC_CFGR1_RES | ADC_CFGR1_ALIGN);
+  ADC1->CFGR1 |= ADC_CFGR1_CONT;
 
-    // Interrupt on end of conversion
-    ADC1->IER |= ADC_IER_EOCIE;
-    NVIC_SetPriority(ADC1_COMP_IRQn, 1);
-    NVIC_EnableIRQ(ADC1_COMP_IRQn);
+  // Interrupt on end of conversion
+  ADC1->IER |= ADC_IER_EOCIE;
+  NVIC_SetPriority(ADC1_COMP_IRQn, 1);
+  NVIC_EnableIRQ(ADC1_COMP_IRQn);
 
-    // Enable and wait until ready
-    ADC1->ISR |= ADC_ISR_ADRDY;      // clear stale ready flag (write 1)
-    ADC1->CR  |= ADC_CR_ADEN;
-    while (!(ADC1->ISR & ADC_ISR_ADRDY)) {}
+  // Enable and wait until ready
+  ADC1->ISR |= ADC_ISR_ADRDY; // clear stale ready flag (write 1)
+  ADC1->CR |= ADC_CR_ADEN;
+  while (!(ADC1->ISR & ADC_ISR_ADRDY)) {
+  }
 }
 
 /* ---------- Interrupt Service Routine ---------- */
-void ADC1_COMP_IRQHandler(void)
-{
-    if (ADC1->ISR & ADC_ISR_EOC)
-    {
-        // Reading DR clears the EOC flag
-        uint32_t adc_val = ADC1->DR;
+void ADC1_COMP_IRQHandler(void) {
+  if (ADC1->ISR & ADC_ISR_EOC) {
+    // Reading DR clears the EOC flag
+    uint32_t adc_val = ADC1->DR;
 
-        // Proportional map with rounding: 0 V -> 0 LEDs, 3.3 V -> 8 LEDs.
-        // LED count k turns on at adc_val = 512k - 256 (see report).
-        uint8_t leds_to_light = (uint8_t)((adc_val * 8 + 2048) / 4096);
+    // Proportional map with rounding: 0 V -> 0 LEDs, 3.3 V -> 8 LEDs.
+    // LED count k turns on at adc_val = 512k - 256 (see report).
+    uint8_t leds_to_light = (uint8_t)((adc_val * 8 + 2048) / 4096);
 
-        // Bar graph: k LEDs on = lowest k bits set
-        uint8_t output_pattern = (uint8_t)((1U << leds_to_light) - 1U);
+    // Bar graph: k LEDs on = lowest k bits set
+    uint8_t output_pattern = (uint8_t)((1U << leds_to_light) - 1U);
 
-        write_led_byte(output_pattern);
-    }
+    write_led_byte(output_pattern);
+  }
 }
 
 /* ---------- Helper: write an 8-bit pattern to PB0-PB7 ---------- */
-static void write_led_byte(uint8_t pattern)
-{
-    uint32_t odr = GPIOB->ODR;
-    odr &= ~(0xFFU);
-    odr |= pattern;
-    GPIOB->ODR = odr;
+static void write_led_byte(uint8_t pattern) {
+  uint32_t odr = GPIOB->ODR;
+  odr &= ~(0xFFU);
+  odr |= pattern;
+  GPIOB->ODR = odr;
 }
