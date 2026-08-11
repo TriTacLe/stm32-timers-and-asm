@@ -76,33 +76,46 @@ void mode3_update(void);
 
 /* USER CODE BEGIN 0 */
 void clear_all_leds(void) {
+  // task 4 solution start
+  // walk over all 8 leds and write them low so the board goes dark
   for (uint8_t i = 0; i < 8; i++) {
     HAL_GPIO_WritePin(led_ports[i], led_pins[i], GPIO_PIN_RESET);
   }
+  // task 4 solution end
 }
 
 void turn_on_led(uint8_t index) {
+  // task 4 solution start
+  // set one pin high, index picks which led from the arrays
   HAL_GPIO_WritePin(led_ports[index], led_pins[index], GPIO_PIN_SET);
+  // task 4 solution end
 }
 
 void turn_off_led(uint8_t index) {
+  // task 4 solution start
+  // same idea but pin goes low
   HAL_GPIO_WritePin(led_ports[index], led_pins[index], GPIO_PIN_RESET);
+  // task 4 solution end
 }
 
 void change_timer_period(uint32_t new_period_ms) {
-  // Timer clock is 1000 Hz (prescaler 7999), so one count = 1 ms
+  // task 4 solution start
+  // timer ticks at 1 kHz after the prescaler so one count is one ms
+  // that means ARR is just the wanted period minus one
   uint32_t new_arr = new_period_ms - 1;
 
-  TIM16->ARR = new_arr; // lands in the preload register (ARPE = 1)
-  TIM16->CNT = 0;       // restart the current cycle
+  TIM16->ARR = new_arr; // lands in the preload register since ARPE is on
+  TIM16->CNT = 0;       // restart the current cycle from zero
 
   current_period_ms = new_period_ms;
+  // task 4 solution end
 }
 
 void handle_buttons(void) {
+  // task 4 solution start
   uint32_t now = HAL_GetTick();
 
-  // All four buttons are active low on PA0..PA3
+  // all four buttons sit on PA0 to PA3 and read low when pressed
   uint16_t button_pins[4] = {GPIO_PIN_0, GPIO_PIN_1, GPIO_PIN_2, GPIO_PIN_3};
   static GPIO_PinState prev_state[4] = {GPIO_PIN_SET, GPIO_PIN_SET,
                                         GPIO_PIN_SET, GPIO_PIN_SET};
@@ -110,34 +123,40 @@ void handle_buttons(void) {
   for (uint8_t b = 0; b < 4; b++) {
     GPIO_PinState state = HAL_GPIO_ReadPin(GPIOA, button_pins[b]);
 
-    // Falling edge + per-button debounce window
+    // only react on the moment the button goes down, and ignore anything
+    // that happens inside the debounce window after the last accepted press
     if (state == GPIO_PIN_RESET && prev_state[b] == GPIO_PIN_SET &&
         (now - last_button_time[b]) >= DEBOUNCE_MS) {
       last_button_time[b] = now;
 
       switch (b) {
-      case 0: // PA0: speed toggle, works in every mode
+      case 0: // PA0 flips between fast and slow, works in every mode
         speed_state ^= 1;
         change_timer_period(speed_state ? 500 : 1000);
         break;
-      case 1: // PA1: running light
+      case 1: // PA1 running light
         set_mode(MODE_1);
         break;
-      case 2: // PA2: inverse running light
+      case 2: // PA2 inverse running light
         set_mode(MODE_2);
         break;
-      case 3: // PA3: sparkle
+      case 3: // PA3 sparkle
         set_mode(MODE_3);
         break;
       }
     }
+    // remember this sample so next loop can spot the falling edge
     prev_state[b] = state;
   }
+  // task 4 solution end
 }
 
 void set_mode(LED_Mode new_mode) {
+  // task 4 solution start
   current_mode = new_mode;
 
+  // wipe the leds and reset every mode variable so the new mode
+  // always starts from the same clean state
   clear_all_leds();
 
   current_led = 0;
@@ -145,22 +164,29 @@ void set_mode(LED_Mode new_mode) {
   sparkle_state = SPARKLE_IDLE;
   sparkle_num_leds_on = 0;
   sparkle_off_index = 0;
+  // task 4 solution end
 }
 
 void mode1_update(void) {
+  // task 4 solution start
+  // one led on at a time, it walks up to 7 then back down to 0
   clear_all_leds();
   turn_on_led(current_led);
 
+  // flip direction at the ends before stepping so the end leds
+  // only show once per pass
   if (current_led == 7) {
     direction = -1;
   } else if (current_led == 0) {
     direction = 1;
   }
   current_led += direction;
+  // task 4 solution end
 }
 
 void mode2_update(void) {
-  // All LEDs on except the moving one
+  // task 4 solution start
+  // opposite of mode 1, everything on except the one that moves
   for (uint8_t i = 0; i < 8; i++) {
     if (i == current_led)
       turn_off_led(i);
@@ -174,32 +200,39 @@ void mode2_update(void) {
     direction = 1;
   }
   current_led += direction;
+  // task 4 solution end
 }
 
 void mode3_update(void) {
+  // task 4 solution start
+  // sparkle runs as a small state machine so nothing ever blocks.
+  // every call checks the time and decides if the next step is due
   uint32_t now = HAL_GetTick();
 
   switch (sparkle_state) {
   case SPARKLE_IDLE:
+    // fresh cycle. grab a random byte, each bit says if that led is on
     sparkle_pattern = (uint8_t)(rand() & 0xFF);
 
     sparkle_num_leds_on = 0;
     for (uint8_t i = 0; i < 8; i++) {
       if (sparkle_pattern & (1 << i)) {
         turn_on_led(i);
+        // remember which leds lit up so we can turn them off one by one later
         sparkle_leds_on[sparkle_num_leds_on++] = i;
       }
     }
 
-    // Hold the pattern for 100 to 1500 ms
+    // hold the pattern for a random time between 100 and 1500 ms
     sparkle_display_until = now + 100 + (uint32_t)(rand() % 1401);
     sparkle_off_index = 0;
     sparkle_state = SPARKLE_DISPLAY;
     break;
 
   case SPARKLE_DISPLAY:
+    // just wait here until the hold time runs out
     if (now >= sparkle_display_until) {
-      // First turn-off happens after its own random 100 to 150 ms delay
+      // first turn off gets its own random delay of 100 to 150 ms
       sparkle_next_off_time = now + 100 + (uint32_t)(rand() % 51);
       sparkle_state = SPARKLE_TURN_OFF;
     }
@@ -207,11 +240,12 @@ void mode3_update(void) {
 
   case SPARKLE_TURN_OFF:
     if (sparkle_off_index >= sparkle_num_leds_on) {
-      // All LEDs from the pattern are off, start a fresh cycle
+      // everything from the pattern is off again so start over
       sparkle_state = SPARKLE_IDLE;
       break;
     }
     if (now >= sparkle_next_off_time) {
+      // kill the next led in the list and roll a new delay for the one after
       turn_off_led(sparkle_leds_on[sparkle_off_index++]);
       sparkle_next_off_time = now + 100 + (uint32_t)(rand() % 51);
     }
@@ -221,6 +255,7 @@ void mode3_update(void) {
     sparkle_state = SPARKLE_IDLE;
     break;
   }
+  // task 4 solution end
 }
 /* USER CODE END 0 */
 

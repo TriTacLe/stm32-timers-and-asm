@@ -34,8 +34,10 @@ TIM_HandleTypeDef htim16;
 /* USER CODE BEGIN PV */
 // LED toggle pin (PB0 = LED0)
 
+// task 1 solution start
 #define LED0_PORT GPIOB
 #define LED0_PIN GPIO_PIN_0
+// task 1 solution end
 
 /* USER CODE END PV */
 
@@ -104,9 +106,11 @@ void SystemClock_Config(void) {
  */
 static void MX_TIM16_Init(void) {
   htim16.Instance = TIM16;
+  // task 1 solution start (PSC and ARR values)
   htim16.Init.Prescaler = 7999; // 8 MHz / (7999+1) = 1 kHz timer clock
   htim16.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim16.Init.Period = 999; // 1 kHz / (999+1) = 1 Hz update event
+  // task 1 solution end
   htim16.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim16.Init.RepetitionCounter = 0;
   htim16.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
@@ -120,8 +124,11 @@ static void MX_TIM16_Init(void) {
  * @brief GPIO Initialization – PB0 as output (LED0)
  */
 static void MX_GPIO_Init(void) {
+  // task 1 solution start
+  // port clock first, gpio registers do nothing without it
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
+  // PB0 as push pull output for the led, no pull resistor needed
   GPIO_InitTypeDef GPIO_InitStruct = {0};
   GPIO_InitStruct.Pin = LED0_PIN;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
@@ -129,15 +136,21 @@ static void MX_GPIO_Init(void) {
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LED0_PORT, &GPIO_InitStruct);
 
+  // start with the led off so the first toggle turns it on
   HAL_GPIO_WritePin(LED0_PORT, LED0_PIN, GPIO_PIN_RESET);
+  // task 1 solution end
 }
 
 /**
  * @brief TIM16 interrupt handler – toggles PB0 each time
  */
 void TIM16_IRQHandler(void) {
-  HAL_TIM_IRQHandler(&htim16); // clears the update interrupt flag
+  // task 1 solution start
+  // let HAL clear the update flag, then flip the led. timer updates once
+  // per second so the led blinks at 0.5 Hz on off cycle
+  HAL_TIM_IRQHandler(&htim16);
   HAL_GPIO_TogglePin(LED0_PORT, LED0_PIN);
+  // task 1 solution end
 }
 
 /**
