@@ -23,8 +23,21 @@ Practical_1A/Release/
 
 .claude/
 CLAUDE.md
+.mcp.json
+.vscode/
 *.vscode/
 *.settings/
+.idea/
+
+# stray shell config picked up in the workspace root
+.bashrc
+.bash_profile
+.profile
+.zshrc
+.zprofile
+.gitconfig
+.ripgreprc
+.gitmodules
 
 .clangd
 main.pdf
