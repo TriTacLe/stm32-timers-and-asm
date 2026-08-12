@@ -110,12 +110,12 @@ The video showing all three modes and the speed toggle is in the GitHub reposito
         N = \frac{V_{in}}{V_{ref}} \cdot (2^{12} - 1) = \frac{2.0}{3.3} \cdot 4095 = 2481.8 \approx 2482
     \]
     assuming $V_{ref} = V_{DDA} = 3.3$ V.
-    \item Measured multimeter voltage at the moment the 5th LED turns on: 2.13 V
+    \item Measured multimeter voltage at the moment the 5th LED turns on: 1.83 V
     \item Calculation comparing your measured voltage against the theoretical threshold: our mapping is $k = \left\lfloor \frac{8N + 2048}{4096} \right\rfloor$ (proportional with rounding), so the 5th LED turns on when $8N + 2048 \geq 5 \cdot 4096$, that is $N \geq 2304$. The theoretical threshold voltage is
     \[
         V_{th} = \frac{2304}{4095} \cdot 3.3 = 1.857~\text{V}.
     \]
-    The measured threshold is 2.13 V against the predicted 1.857 V, a difference of 0.273 V or 14.7\% above theory.
+    The measured threshold is 1.83 V against the predicted 1.857 V, a difference of 0.027 V or 1.5\% below theory.
 \end{itemize}
 
 \subsection{Question}
