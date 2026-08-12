@@ -138,6 +138,12 @@ static void MX_GPIO_Init(void) {
 
   // start with the led off so the first toggle turns it on
   HAL_GPIO_WritePin(LED0_PORT, LED0_PIN, GPIO_PIN_RESET);
+
+  // PB1 is unused but sits next to PB0; left floating it picks up the
+  // toggle capacitively and LED1 ghost-flickers, so drive it low
+  GPIO_InitStruct.Pin = GPIO_PIN_1;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_RESET);
   // task 1 solution end
 }
 

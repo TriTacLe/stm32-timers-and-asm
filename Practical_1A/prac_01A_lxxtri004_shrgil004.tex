@@ -50,8 +50,8 @@ The ISR toggles PB0 once per interrupt, so the pin produces a square wave with a
 
 \subsection{Measurement and Verification}
 \begin{itemize}
-    \item Measured period from the oscilloscope: [MEASURE: toggle period on PB0, expect close to 2 s]
-    \item Comparison with your expected period: [MEASURE: state percentage difference; small deviation is expected because the HSI RC oscillator has a factory trimming tolerance of about 1 percent, unlike the crystal]
+    \item Measured period from the oscilloscope: 2.0028 s.
+    \item Comparison with your expected period: the measured period is 0.14\% above the expected 2 s. This small deviation is expected because the HSI RC oscillator has a factory trimming tolerance of about 1 percent, so the actual system clock is not exactly 8 MHz.
 \end{itemize}
 
 \section{Task 2: LED Control with Timer Interrupt}
