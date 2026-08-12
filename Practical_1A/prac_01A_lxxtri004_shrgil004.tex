@@ -1,5 +1,4 @@
 % EEE3096S Practical 1A report, Group 79
-% Fields marked [MEASURE: ...] must be filled in during the lab session.
 
 \documentclass[11pt]{article}
 
@@ -55,7 +54,9 @@ The ISR toggles PB0 once per interrupt, so the pin produces a square wave with a
 \end{itemize}
 
 \section{Task 2: LED Control with Timer Interrupt}
-Confirm your running light video is in your submission folder, or link it here: [ADD: video link or filename in the GitHub repo]
+The running light video is in the GitHub repository:
+
+\texttt{Practical\_1A/task2\_running\_light.mov}
 
 \section{Task 3: Button Input and Software Debounce}
 
@@ -63,7 +64,7 @@ Confirm your running light video is in your submission folder, or link it here: 
 \begin{itemize}
     \item Expected switch bounce duration: 1 to 20 ms. Small tactile switches typically settle within a few milliseconds, and rarely exceed 10 to 20 ms.
     \item Maximum bounce duration measured on the oscilloscope: 1.27 ms
-    \item Chosen software debounce delay time: 50 ms. This sits well above the measured bounce window, so no bounce edge can retrigger, and well below the fastest intentional repeated press, so no real press is ignored. [ADJUST if your measured bounce exceeds 30 ms]
+    \item Chosen software debounce delay time: 50 ms. This sits well above the measured bounce window, so no bounce edge can retrigger, and well below the fastest intentional repeated press, so no real press is ignored. The measured bounce of 1.27 ms is well inside this window.
     \item Formula to calculate the ARR value from the desired period in milliseconds: with the prescaler fixed at 7999 the timer clock is 1 kHz, so one count equals 1 ms and
     \[
         \text{ARR} = \frac{f_{\text{timer}} \cdot T_{\text{ms}}}{1000} - 1 = T_{\text{ms}} - 1.
@@ -93,6 +94,12 @@ Every LED turns on at pattern onset and turns off in its slot of the turn-off se
     \item Measured minimum LED-on time for Mode 3: 510 ms
     \item Measured maximum LED-on time for Mode 3: 1420 ms
 \end{itemize}
+
+The observed maximum of 1420 ms sits below the theoretical bound of 2700 ms. Reaching that bound requires a random pattern with all eight bits set, which occurs roughly once in 256 cycles, so it is not expected to appear in a short recording.
+
+The video showing all three modes and the speed toggle is in the GitHub repository:
+
+\texttt{Practical\_1A/task4\_multi\_mode\_led\_control.mov}
 
 \section{Task 5: ADC Interrupts and LED Level Meter}
 
