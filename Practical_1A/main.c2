@@ -37,12 +37,17 @@ void update_led_pattern(void);
 
 /* USER CODE BEGIN 0 */
 void turn_off_all_leds(void) {
+  // task 2 solution start
+  // walk the arrays and write every led low
   for (uint8_t i = 0; i < 8; i++) {
     HAL_GPIO_WritePin(led_ports[i], led_pins[i], GPIO_PIN_RESET);
   }
+  // task 2 solution end
 }
 
 void update_led_pattern(void) {
+  // task 2 solution start
+  // clear everything then light only the current one
   turn_off_all_leds();
   HAL_GPIO_WritePin(led_ports[current_led], led_pins[current_led],
                     GPIO_PIN_SET);
@@ -55,6 +60,7 @@ void update_led_pattern(void) {
     direction = 1;
   }
   current_led += direction;
+  // task 2 solution end
 }
 /* USER CODE END 0 */
 
@@ -78,10 +84,14 @@ int main(void) {
 
   while (1) {
     /* USER CODE BEGIN WHILE */
+    // task 2 solution start
+    // ISR only raises the flag. main loop sees it, clears it and does the
+    // gpio work here so the interrupt itself stays short
     if (timer_event) {
       timer_event = 0;
       update_led_pattern();
     }
+    // task 2 solution end
     /* USER CODE END WHILE */
   }
 }
@@ -154,7 +164,9 @@ static void MX_GPIO_Init(void) {
 */
 void TIM16_IRQHandler(void) {
   HAL_TIM_IRQHandler(&htim16); // Clears the update flag
-  timer_event = 1;             // Main loop does the GPIO work
+  // task 2 solution start
+  timer_event = 1; // Main loop does the GPIO work
+  // task 2 solution end
 }
 
 /**

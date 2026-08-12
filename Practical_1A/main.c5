@@ -10,7 +10,10 @@ int main(void) {
   GPIO_Init();
   ADC_Init();
 
-  ADC1->CR |= ADC_CR_ADSTART; // start continuous conversions
+  // task 5 solution start
+  // kick off the ADC once, continuous mode keeps it converting forever
+  ADC1->CR |= ADC_CR_ADSTART;
+  // task 5 solution end
 
   while (1) {
     /* everything happens in the ISR */
@@ -19,22 +22,28 @@ int main(void) {
 
 /* ---------- GPIO Configuration ---------- */
 static void GPIO_Init(void) {
+  // task 5 solution start
+  // clocks first, nothing on a port works before its clock is on
   RCC->AHBENR |= RCC_AHBENR_GPIOAEN | RCC_AHBENR_GPIOBEN;
 
-  // PA5 analog mode (MODER5 = 11) for ADC_IN5
+  // PA5 goes analog for ADC_IN5, both MODER bits set gives 11
   GPIOA->MODER |= (3U << (5 * 2));
 
-  // PB0-PB7 general purpose outputs (MODERx = 01), LEDs off initially
+  // PB0 to PB7 as outputs. clear the low 16 MODER bits then write 01
+  // per pin which is the 0x5555 pattern. ODR cleared so leds start off
   GPIOB->MODER &= ~0xFFFFU;
   GPIOB->MODER |= 0x5555U;
   GPIOB->ODR &= ~0xFFU;
+  // task 5 solution end
 }
 
 /* ---------- ADC Configuration ---------- */
 static void ADC_Init(void) {
+  // task 5 solution start
   RCC->APB2ENR |= RCC_APB2ENR_ADCEN;
 
-  // ADC must be disabled before calibration
+  // calibration only works while the ADC is disabled so make sure of that
+  // first, then run it and wait for the hardware to finish
   if (ADC1->CR & ADC_CR_ADEN) {
     ADC1->CR |= ADC_CR_ADDIS;
     while (ADC1->CR & ADC_CR_ADEN) {
@@ -44,41 +53,49 @@ static void ADC_Init(void) {
   while (ADC1->CR & ADC_CR_ADCAL) {
   }
 
-  // Channel 5 (PA5), longest sampling time (239.5 cycles) for a clean DC read
+  // channel 5 is PA5. slowest sampling time, 239.5 cycles, because the
+  // pot is a slow DC signal and longer sampling gives a cleaner read
   ADC1->CHSELR = ADC_CHSELR_CHSEL5;
   ADC1->SMPR = 7U;
 
-  // 12-bit resolution (RES = 00) and right alignment (ALIGN = 0) are the
-  // reset defaults; select continuous conversion mode
+  // 12 bit resolution and right alignment are already the reset defaults,
+  // clearing the bits just makes that explicit. CONT means it reconverts
+  // on its own without us restarting it
   ADC1->CFGR1 &= ~(ADC_CFGR1_RES | ADC_CFGR1_ALIGN);
   ADC1->CFGR1 |= ADC_CFGR1_CONT;
 
-  // Interrupt on end of conversion
+  // fire an interrupt every time a conversion finishes
   ADC1->IER |= ADC_IER_EOCIE;
   NVIC_SetPriority(ADC1_COMP_IRQn, 1);
   NVIC_EnableIRQ(ADC1_COMP_IRQn);
 
-  // Enable and wait until ready
-  ADC1->ISR |= ADC_ISR_ADRDY; // clear stale ready flag (write 1)
+  // clear a possibly stale ready flag by writing 1 to it, enable the
+  // ADC and wait until it says it is ready
+  ADC1->ISR |= ADC_ISR_ADRDY;
   ADC1->CR |= ADC_CR_ADEN;
   while (!(ADC1->ISR & ADC_ISR_ADRDY)) {
   }
+  // task 5 solution end
 }
 
 /* ---------- Interrupt Service Routine ---------- */
 void ADC1_COMP_IRQHandler(void) {
   if (ADC1->ISR & ADC_ISR_EOC) {
-    // Reading DR clears the EOC flag
+    // task 5 solution start
+    // reading DR gives the 12 bit result and clears the EOC flag in one go
     uint32_t adc_val = ADC1->DR;
 
-    // Proportional map with rounding: 0 V -> 0 LEDs, 3.3 V -> 8 LEDs.
-    // LED count k turns on at adc_val = 512k - 256 (see report).
+    // scale 0 to 4095 down to 0 to 8 leds. the plus 2048 makes the divide
+    // round to nearest instead of always down, so led number k switches
+    // on at adc_val equal to 512k minus 256, worked out in the report
     uint8_t leds_to_light = (uint8_t)((adc_val * 8 + 2048) / 4096);
 
-    // Bar graph: k LEDs on = lowest k bits set
+    // bar graph pattern, k leds on means the lowest k bits are 1.
+    // shift 1 up by k then subtract 1
     uint8_t output_pattern = (uint8_t)((1U << leds_to_light) - 1U);
 
     write_led_byte(output_pattern);
+    // task 5 solution end
   }
 }
 
