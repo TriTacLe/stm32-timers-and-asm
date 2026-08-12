@@ -5,19 +5,12 @@ This markdown document provides a detailed pinout mapping, hardware sub-circuit 
 ## 1. Project Metadata
 
 - **Title:** UCT Dev Board
-    
 - **Institution:** University of Cape Town
-    
 - **Original Designer:** James Gowans
-    
 - **Revision Author:** Justin Pead
-    
 - **Date:** 2025-01-06
-    
 - **Revision:** v1.06
-    
 - **EDA Tool:** KiCad E.D.A. 9.0.7
-    
 
 ## 2. Comprehensive Pinout Reference Table (Pins 1–48)
 
@@ -79,79 +72,52 @@ The table below describes the function and connections of all 48 pins on the LQF
 ### A. Power Supply & Regulation Block
 
 - **Input Sources:** Power is drawn primarily via the standard **USB Connector** (Molex 61729-0010BLF) which provides a raw `5V_USB` rail. An external power terminal block (`JP2` Header 2) is available for standalone operation.
-    
 - **Voltage Regulator:** An `MCP1702-3302E/TO` Low-Dropout (LDO) linear regulator down-converts the raw 5V input down to a stabilized `3V3` system rail.
-    
 - **Decoupling Network:** The board integrates an extensive array of filtering capacitors to guarantee clean voltage supply inputs across all frequencies:
-    
-    - Bulk Input Filtering: `C1` ($10\,\mu\text{F}$) and `C2` ($1\,\mu\text{F}$).
-        
-    - Core Output Smoothing: `C3` ($5\,\mu\text{F}$).
-        
-    - High-Frequency Noise Suppression: Parallel network containing capacitors `C4`, `C5`, `C6`, and `C7` (all $100\,\text{nF}$) distributed across supply rails.
-        
+  - Bulk Input Filtering: `C1` ($10\,\mu\text{F}$) and `C2` ($1\,\mu\text{F}$).
+  - Core Output Smoothing: `C3` ($5\,\mu\text{F}$).
+  - High-Frequency Noise Suppression: Parallel network containing capacitors `C4`, `C5`, `C6`, and `C7` (all $100\,\text{nF}$) distributed across supply rails.
 - **Visual Indication:** A green **Power LED** (`D8`) is connected in series with a $150\,\Omega$ resistor (`R10`) directly across the `3V3` output track to confirm operational voltage status.
-    
 
 ### B. User Interface Elements (Buttons & LEDs)
 
 - **The "Byte of LEDs":** A unique design feature of the UCT Dev Board is the provision of an entire continuous 8-bit output byte mapped entirely onto **Port B**.
-    
-    - Lower Bits (`PB0`, `PB1`, `PB2`) route to individual indicator LEDs (`D1`, `D2`, `D3`).
-        
-    - Upper Bits (`PB3`, `PB4`, `PB5`, `PB6`, `PB7`) drive the remaining 5 LEDs in the cluster assembly.
-        
-    - Every individual LED incorporates a $150\,\Omega$ current-limiting resistor to guarantee uniform brightness.
-        
+  - Lower Bits (`PB0`, `PB1`, `PB2`) route to individual indicator LEDs (`D1`, `D2`, `D3`).
+  - Upper Bits (`PB3`, `PB4`, `PB5`, `PB6`, `PB7`) drive the remaining 5 LEDs in the cluster assembly.
+  - Every individual LED incorporates a $150\,\Omega$ current-limiting resistor to guarantee uniform brightness.
 - **Push-Button Switches:** Four uncommitted tactile input pushbuttons are grouped as the **Switches** block, mapped to pins `PA0` through `PA3`. These interface lines are hardwired to pull down directly to `GND` when depressed.
-    
 - **Analog Interface (Pots + Jumper):** An on-board $1\,\text{k}\Omega$ linear potentiometer (**POT0**) serves as a clean adjustable analog voltage source. Using the 2x2 header layout (`Header 2X2`), a user can install a physical jumper block to route the variable analog voltage signal directly to `PB0` for ADC conversion testing.
-    
 
 ### C. Alphanumeric LCD Character Screen Interface
 
 The board integrates a `WC1602A` character LCD screen module powered by an independent `LCD_PWR` track. Because standard character screens operate at standard 5V logic thresholds while the STM32F0 operates at 3V3, the design includes **six separate bidirectional N-Channel MOSFET Level Shifters**.
 
 - **Shifter Architecture:** Each of the 6 isolated shifters relies on a discrete NMOS transistor (e.g., `Q2` through `Q6` across schematic sheets) matched with dual $1.8\,\text{k}\Omega$ pullup resistors tied between the low-voltage side (`3V3`) and the high-voltage side (`5V`).
-    
-- **Control Configuration:** * `PC15` shifts to `PC15_S` $\rightarrow$ Drives **RS (Register Select)**.
-    
-    - `PC14` shifts to `PC14_S` $\rightarrow$ Drives **E (Enable Clock)**.
-        
-    - The **R/W (Read/Write)** track is permanently pulled low (`GND`), locking the module into Write-Only mode to optimize pin constraints.
-        
+- **Control Configuration:** \* `PC15` shifts to `PC15_S` $\rightarrow$ Drives **RS (Register Select)**.
+  - `PC14` shifts to `PC14_S` $\rightarrow$ Drives **E (Enable Clock)**.
+  - The **R/W (Read/Write)** track is permanently pulled low (`GND`), locking the module into Write-Only mode to optimize pin constraints.
 - **Data Configuration:** To maximize system efficiency, the screen runs in compact **4-bit Nibble Mode** using high-speed data lines 4 to 7:
-    
-    - `PB8` shifts to drive **DB4**
-        
-    - `PB9` shifts to drive **DB5**
-        
-    - `PA12` shifts to drive **DB6**
-        
-    - `PA15` shifts to drive **DB7**
-        
+  - `PB8` shifts to drive **DB4**
+  - `PB9` shifts to drive **DB5**
+  - `PA12` shifts to drive **DB6**
+  - `PA15` shifts to drive **DB7**
 - **Contrast Potentiometer:** A dedicated trimmer potentiometer (**POT2**, $10\,\text{k}\Omega$) interfaces with the LCD contrast pin (`V0`) to handle character clarity calibration.
-    
 
 ### D. Integrated SPI EEPROM Storage
 
 For non-volatile memory development, the board mounts a `CAT25040LI-G` 4-Kilobit SPI EEPROM IC:
 
 - **Pin 1 (`CS`):** Driven by `PB12`.
-    
 - **Pin 2 (`SO`):** Main MISO out, mapped to `PB13`.
-    
 - **Pin 5 (`SI`):** Main MOSI in, mapped to `PB14`.
-    
 - **Pin 6 (`SCK`):** Bus Clock input, mapped to `PB15`.
-    
 - **Loopback Validation Header (`P2`):** The 2x4 jumper header layout (`Conn_02x04_Odd_Even`) provides quick bus manipulation. A programmer can bridge these contacts to link the active EEPROM SPI pins directly to alternative GPIO nodes (`PA7`, `PA11`, `PA8`) for diagnostic signal tracing or peripheral separation.
-    
 
 ### E. Onboard ST-Link V2.1 Programmer/Debugger
 
 The topmost section features an integrated **ST-Link V2.1** circuitry subsystem that removes the need for external hardware debug tools.
 
 - **SWD Target Connection:** Connects directly to the target via the standard Serial Wire Debug framework: `T_SWCLK` to Pin 37 (`PA14`) and `T_SWDIO` to Pin 34 (`PA13`).
-    
 - **Virtual COM Port (VCP):** Bridges the microcontroller's internal hardware USART1 lines to the central USB connection, setting up full-duplex serial monitoring over lines `VCP_TX` (Pin 30, `PA9`) and `VCP_RX` (Pin 31, `PA10`).
+
+test
