@@ -1,7 +1,7 @@
 /*
  * Task 6: Software PWM via Timer Interrupts
  * Target: STM32F051C8 (UCT Dev Board)
- * Output: PB5 (Byte of LEDs bit D5)
+ * Output: PB4 (Byte of LEDs bit D4)
  * Signal: 100 Hz, 30% duty cycle, generated entirely in software
  */
 #include "stm32f0xx.h"
@@ -31,17 +31,17 @@ static void GPIO_Init(void) {
   // task 6 solution start
   RCC->AHBENR |= RCC_AHBENR_GPIOBEN;
 
-  // PB5 as plain output. clear the two MODER bits then set 01 for output.
+  // PB4 as plain output. clear the two MODER bits then set 01 for output.
   // push pull, medium speed, no pull resistors since we drive it both ways
-  GPIOB->MODER &= ~(3U << (5 * 2));
-  GPIOB->MODER |= (1U << (5 * 2));
-  GPIOB->OTYPER &= ~(1U << 5);
-  GPIOB->OSPEEDR &= ~(3U << (5 * 2));
-  GPIOB->OSPEEDR |= (1U << (5 * 2));
-  GPIOB->PUPDR &= ~(3U << (5 * 2));
+  GPIOB->MODER &= ~(3U << (4 * 2));
+  GPIOB->MODER |= (1U << (4 * 2));
+  GPIOB->OTYPER &= ~(1U << 4);
+  GPIOB->OSPEEDR &= ~(3U << (4 * 2));
+  GPIOB->OSPEEDR |= (1U << (4 * 2));
+  GPIOB->PUPDR &= ~(3U << (4 * 2));
 
   // BRR write forces the pin low so the signal starts in a known state
-  GPIOB->BRR = (1U << 5);
+  GPIOB->BRR = (1U << 4);
   // task 6 solution end
 }
 
@@ -79,9 +79,9 @@ void TIM16_IRQHandler(void) {
     // pin high for the first 30 ticks and low for the other 70.
     // that is 30 percent duty at 100 Hz
     if (counter < 30) {
-      GPIOB->BSRR = (1U << 5);
+      GPIOB->BSRR = (1U << 4);
     } else {
-      GPIOB->BRR = (1U << 5);
+      GPIOB->BRR = (1U << 4);
     }
 
     counter++;
