@@ -62,7 +62,7 @@ Confirm your running light video is in your submission folder, or link it here: 
 \subsection{Records}
 \begin{itemize}
     \item Expected switch bounce duration: 1 to 20 ms. Small tactile switches typically settle within a few milliseconds, and rarely exceed 10 to 20 ms.
-    \item Maximum bounce duration measured on the oscilloscope: [MEASURE: single-shot capture on PA0, worst case over several presses]
+    \item Maximum bounce duration measured on the oscilloscope: 1.27 ms
     \item Chosen software debounce delay time: 50 ms. This sits well above the measured bounce window, so no bounce edge can retrigger, and well below the fastest intentional repeated press, so no real press is ignored. [ADJUST if your measured bounce exceeds 30 ms]
     \item Formula to calculate the ARR value from the desired period in milliseconds: with the prescaler fixed at 7999 the timer clock is 1 kHz, so one count equals 1 ms and
     \[
@@ -90,8 +90,8 @@ Because the state machine only ever compares tick deadlines, the PA0 speed toggl
 \subsection{Measurements}
 Every LED turns on at pattern onset and turns off in its slot of the turn-off sequence. The theoretical minimum on-time is the shortest hold plus the shortest first turn-off delay, $100 + 100 = 200$ ms, for the LED switched off first. The theoretical maximum is the longest hold plus eight turn-off slots at 150 ms each, $1500 + 8 \times 150 = 2700$ ms, for the last LED of a full 8-bit pattern.
 \begin{itemize}
-    \item Measured minimum LED-on time for Mode 3: [MEASURE: scope or slow-motion video over several cycles]
-    \item Measured maximum LED-on time for Mode 3: [MEASURE]
+    \item Measured minimum LED-on time for Mode 3: 510 ms
+    \item Measured maximum LED-on time for Mode 3: 1420 ms
 \end{itemize}
 
 \section{Task 5: ADC Interrupts and LED Level Meter}
@@ -103,12 +103,12 @@ Every LED turns on at pattern onset and turns off in its slot of the turn-off se
         N = \frac{V_{in}}{V_{ref}} \cdot (2^{12} - 1) = \frac{2.0}{3.3} \cdot 4095 = 2481.8 \approx 2482
     \]
     assuming $V_{ref} = V_{DDA} = 3.3$ V.
-    \item Measured multimeter voltage at the moment the 5th LED turns on: [MEASURE]
+    \item Measured multimeter voltage at the moment the 5th LED turns on: 2.13 V
     \item Calculation comparing your measured voltage against the theoretical threshold: our mapping is $k = \left\lfloor \frac{8N + 2048}{4096} \right\rfloor$ (proportional with rounding), so the 5th LED turns on when $8N + 2048 \geq 5 \cdot 4096$, that is $N \geq 2304$. The theoretical threshold voltage is
     \[
         V_{th} = \frac{2304}{4095} \cdot 3.3 = 1.857~\text{V}.
     \]
-    [MEASURE: compare your multimeter reading against 1.857 V and give the percentage error]
+    The measured threshold is 2.13 V against the predicted 1.857 V, a difference of 0.273 V or 14.7\% above theory.
 \end{itemize}
 
 \subsection{Question}
@@ -125,8 +125,8 @@ Output pin: PB5 (LED D5), as configured in the provided Task 6 skeleton.
         f_{int} = \frac{8\,000\,000}{(\text{PSC}+1)(\text{ARR}+1)} = \frac{8\,000\,000}{(7+1)(99+1)} = 10\,000~\text{Hz}
     \]
     so PSC $= 7$ and ARR $= 99$. The ISR counter divides this by 100, giving a 100 Hz PWM period, and drives the pin high for counts 0 to 29, giving 30 of 100 ticks high, a 30 percent duty cycle with an expected pulse width of 3 ms.
-    \item Measured total period of the signal: [MEASURE: expect 10 ms]
-    \item Measured positive pulse width: [MEASURE: expect 3 ms]
+    \item Measured total period of the signal: 10.71 ms
+    \item Measured positive pulse width: 3.016 ms
 \end{itemize}
 
 \subsection{Question}
