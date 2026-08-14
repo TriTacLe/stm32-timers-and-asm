@@ -23,8 +23,8 @@
 #define TIM16_ARR_VALUE 99
 // task 6 solution end
 
-static void GPIO_Init(void);
-static void TIM16_Init(void);
+static void GPIO_Init(void);  // PB4 as a plain push pull output
+static void TIM16_Init(void); // 10 kHz update interrupt, 100 steps per period
 
 int main(void) {
   // task 6 solution start
@@ -86,8 +86,11 @@ void TIM16_IRQHandler(void) {
     // clear the flag first or the interrupt refires forever
     TIM16->SR &= ~TIM_SR_UIF;
 
-    // pin high for the first 30 ticks and low for the other 70.
-    // that is 30 percent duty at 100 Hz
+    // High for the first 30 ticks, low for the other 70. 30 percent duty at
+    // 100 Hz, so a 3 ms pulse in a 10 ms period.
+    // BSRR sets a bit, BRR clears it. Both are single writes that touch only
+    // the named pin, unlike a read modify write on ODR which could be
+    // corrupted if something else changed the port in between.
     if (counter < 30) {
       GPIOB->BSRR = (1U << 4);
     } else {

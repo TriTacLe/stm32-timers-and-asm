@@ -16,12 +16,30 @@
  */
 
 // TASK 1: blink LED0 on PB0 and measure it on the scope.
-// TIM16 counts the 8 MHz clock.
+//
+// THE MATHS
+// TIM16 counts the 8 MHz clock. Two dividers sit between the clock and the
+// interrupt, so the update frequency is
+//   f_update = 8 MHz / ((PSC + 1) * (ARR + 1))
 // PSC 7999 keeps 1 tick out of every 8000, so one count is 1 ms.
-// ARR 999 counts 0 to 999 then rolls over, so once per second.
-// Rolling over raises a flag. The NVIC sees it and calls TIM16_IRQHandler.
-// The handler flips the pin, so a full on off cycle takes 2 seconds.
-// main only sets things up. The timer runs on its own in hardware.
+// ARR 999 counts 0 to 999 then rolls over, so an update happens once a second.
+// The handler flips the pin, so it takes two updates for one full on off
+// cycle. Period 2 s, frequency 0.5 Hz.
+//
+// WHY TWO DIVIDERS AND NOT ONE
+// ARR is 16 bit, so its largest value is 65535. Getting 1 Hz straight from
+// 8 MHz would need 8 million counts, which does not fit. The prescaler brings
+// the clock down to a round 1 kHz first, then ARR does the rest.
+//
+// WHAT ACTUALLY RUNS THE BLINK
+// Not main. Rolling over sets the UIF flag inside the timer. UIE lets that
+// flag out to the NVIC, the NVIC interrupts the CPU and vectors it to
+// TIM16_IRQHandler. main sets everything up and then spins doing nothing.
+//
+// MEASURED
+// 2.0038 s against an expected 2 s, so 0.19 percent high. The HSI is an
+// on chip RC oscillator with about 1 percent factory tolerance, so 8 MHz is
+// nominal, not exact. 0.19 percent sits well inside that.
 
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
@@ -35,27 +53,25 @@
 /* Private macro -------------------------------------------------------------*/
 
 /* Private variables ---------------------------------------------------------*/
-// HAL handle. HAL is stateless C, so every call need struct carrying pointer.
+// The timer handle. HAL functions keep no state of their own, so this struct
+// carries the settings and a pointer to the real registers. Global because
+// both the init function and the interrupt handler need it.
 TIM_HandleTypeDef htim16;
 
-// LED toggle pin (PB0 = LED0)
-
-//
-// names the pin once so init and isr all refer to the same thing
+// Names the pin once so init and handler cannot drift apart. LED0 is on PB0.
 #define LED0_PORT GPIOB
 #define LED0_PIN GPIO_PIN_0
-//
 
 /* Private function prototypes -----------------------------------------------*/
-void SystemClock_Config(void);
-static void MX_GPIO_Init(void);
-static void MX_TIM16_Init(void);
+void SystemClock_Config(void); // sets the chip to run off HSI at 8 MHz
+static void MX_GPIO_Init(void);  // PB0 as an output, PB1 tied low
+static void MX_TIM16_Init(void); // PSC, ARR and the NVIC line for TIM16
 
-//
-// startup_stm32f051x8 puts this variable in the vector table at the TIM16 slot
-// and later declaes it spelling is important
+// The name is the interface. startup_stm32f051x8.s already put this symbol in
+// the vector table at the TIM16 slot as a weak alias to Default_Handler.
+// Defining it here overrides that. Spell it wrong and it silently compiles,
+// the weak version stays, and the interrupt goes to an empty infinite loop.
 void TIM16_IRQHandler(void);
-//
 
 /* Private user code ---------------------------------------------------------*/
 
@@ -64,20 +80,24 @@ void TIM16_IRQHandler(void);
  * @retval int
  */
 int main(void) {
-  //
-  // order important
-  HAL_Init();           // flash prefetch and systick
-  SystemClock_Config(); // HSI 8 mhz
+  // Order matters. Every step below depends on the one above it.
+  HAL_Init();           // flash prefetch and the SysTick used by HAL_Delay
+  SystemClock_Config(); // pick HSI and set the clock tree to 8 MHz
 
-  // Pin and timer setup
+  // Pin first, then timer. Nothing enables its own clock, so these two
+  // functions have to switch on the GPIOB and TIM16 clocks themselves.
   MX_GPIO_Init();
   MX_TIM16_Init();
 
-  // Start TIM16 in interrupt mode
+  // This one call does two things: sets UIE so the timer is allowed to raise
+  // an interrupt, and sets CEN which actually starts the counter. Without it
+  // the timer is configured but frozen.
   HAL_TIM_Base_Start_IT(&htim16);
 
   while (1) {
-    // Main loop does nothing all work is in the ISR
+    // Empty on purpose. The timer counts in hardware and the NVIC calls the
+    // handler, so the CPU has nothing to do here. This is the whole point of
+    // interrupts over a delay loop: the main loop stays free.
   }
 }
 
@@ -85,21 +105,33 @@ int main(void) {
  * @brief System Clock Configuration (HSI 8 MHz)
  */
 void SystemClock_Config(void) {
+  // Flash is slower than the CPU, so above 24 MHz the CPU has to insert a
+  // wait state on every fetch. We run at 8 MHz, so zero wait states.
   LL_FLASH_SetLatency(LL_FLASH_LATENCY_0);
   while (LL_FLASH_GetLatency() != LL_FLASH_LATENCY_0) {
   }
 
+  // HSI is the 8 MHz RC oscillator built into the chip. Switch it on and
+  // wait, because an oscillator needs time to settle before it is usable.
   LL_RCC_HSI_Enable();
   while (LL_RCC_HSI_IsReady() != 1) {
   }
 
+  // 16 is the middle of the trimming range, the factory default.
   LL_RCC_HSI_SetCalibTrimming(16);
+
+  // Both prescalers set to 1, so SYSCLK, HCLK and PCLK are all 8 MHz.
+  // That is why the timer sees exactly 8 MHz and the maths above is simple.
   LL_RCC_SetAHBPrescaler(LL_RCC_SYSCLK_DIV_1);
   LL_RCC_SetAPB1Prescaler(LL_RCC_APB1_DIV_1);
+
+  // No PLL anywhere. 8 MHz in, 8 MHz to the core.
   LL_RCC_SetSysClkSource(LL_RCC_SYS_CLKSOURCE_HSI);
   while (LL_RCC_GetSysClkSource() != LL_RCC_SYS_CLKSOURCE_STATUS_HSI) {
   }
 
+  // Tells the software what the clock actually is. HAL_Delay and the SysTick
+  // reload value are computed from this number, not measured.
   LL_SetSystemCoreClock(8000000);
   if (HAL_InitTick(TICK_INT_PRIORITY) != HAL_OK) {
     Error_Handler();
@@ -111,19 +143,35 @@ void SystemClock_Config(void) {
  * Insert calculated values
  */
 static void MX_TIM16_Init(void) {
+  // HAL keeps no state of its own, so every call takes this struct. Instance
+  // is the pointer to the real TIM16 registers the struct describes.
   htim16.Instance = TIM16;
-  // (PSC and ARR values) Prescaler
-  htim16.Init.Prescaler = 7999; // 8 MHz / (7999+1) = 1 kHz timer clock
+
+  // Both registers hold one less than the divide factor, because the counter
+  // includes zero. 7999 divides by 8000, 999 divides by 1000.
+  htim16.Init.Prescaler = 7999; // 8 MHz / 8000 = 1 kHz, so one count is 1 ms
   htim16.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim16.Init.Period = 999; // 1 kHz / (999+1) = 1 Hz update event
-  //
+  htim16.Init.Period = 999; // 1 kHz / 1000 = 1 Hz update event
 
   htim16.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim16.Init.RepetitionCounter = 0;
+
+  // ARPE. Writes to ARR are held in a shadow register and only applied at the
+  // next rollover. Without it a mid count write could land below the current
+  // CNT, the counter would sail past the target and only reload after wrapping
+  // all the way round through 65535, giving one very long cycle.
   htim16.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+
+  // This writes PSC, ARR and CR1. It also calls HAL_TIM_Base_MspInit, which
+  // is where the TIM16 clock gets switched on in RCC.
   if (HAL_TIM_Base_Init(&htim16) != HAL_OK) {
     Error_Handler();
   }
+
+  // The configuration error in the supplied skeleton. UIE only lets the flag
+  // out of the timer. The NVIC still masks that line until it is enabled here,
+  // so without this call the flag is raised, nothing reaches the CPU, the
+  // handler never runs and the LED never blinks.
   NVIC_EnableIRQ(TIM16_IRQn);
 }
 
@@ -131,12 +179,14 @@ static void MX_TIM16_Init(void) {
  * @brief GPIO Initialization PB0 as output (LED0)
  */
 static void MX_GPIO_Init(void) {
-  //
-  // port clock first, gpio registers do nothing without it
+  // Clock first. Writes to GPIOB registers are silently dropped while the
+  // port clock is off, so this line has to come before everything else.
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
-  // PB0 as push pull output for the led, no pull resistor needed
-  GPIO_InitTypeDef GPIO_InitStruct = {0};
+  // Push pull means the pin drives both ways, high through one transistor and
+  // low through another. Open drain could only pull low. No pull resistor is
+  // needed because the pin is never left floating.
+  GPIO_InitTypeDef GPIO_InitStruct = {0}; // one struct, reused for both pins
   GPIO_InitStruct.Pin = LED0_PIN;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
@@ -158,12 +208,13 @@ static void MX_GPIO_Init(void) {
  * @brief TIM16 interrupt handler toggles PB0 each time
  */
 void TIM16_IRQHandler(void) {
-  //
-  // let HAL clear the update flag, then flip the led. timer updates once
-  // per second so the led blinks at 0.5 Hz on off cycle
+  // Clears UIF. This is not optional. The NVIC re enters the handler as long
+  // as the flag is set, so skipping it locks the CPU in the handler forever.
   HAL_TIM_IRQHandler(&htim16);
+
+  // Toggle, not set. Two toggles make one full cycle, so a 1 Hz update gives
+  // a 2 s period. Toggling reads ODR, flips the bit and writes it back.
   HAL_GPIO_TogglePin(LED0_PORT, LED0_PIN);
-  //
 }
 
 /**

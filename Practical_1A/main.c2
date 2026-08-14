@@ -19,49 +19,59 @@
 #include <stdint.h>
 
 /* Private variables ---------------------------------------------------------*/
-TIM_HandleTypeDef htim16;
+TIM_HandleTypeDef htim16; // same timer handle as Task 1, same PSC and ARR
 
 // volatile because the ISR writes this and the main loop reads it.
 // Without it the compiler sees nothing in while(1) changing the value, so it
 // reads it once, keeps it in a register, and spins forever on an old copy.
-volatile uint8_t timer_event =
-    0; // Flag to be set by ISR and polled in main loop
-volatile uint8_t current_led = 0; // Track current LED index (0..7)
-volatile int8_t direction =
-    1; // Track direction (+1 for forward, -1 for backward)
+volatile uint8_t timer_event = 0; // 1 means a second has passed, handled below
 
-// LED port/pin arrays for easy indexing
+volatile uint8_t current_led = 0; // which LED is lit right now, 0 to 7
+volatile int8_t direction = 1;    // +1 walking up the row, -1 walking back
+                                  // signed, so it cannot be uint8_t
+
+// Index to hardware lookup. The brief supplies these so the pattern code can
+// say "LED 5" and stay readable instead of hard coding GPIO_PIN_5 everywhere.
+// All eight happen to be on port B here, but the port array keeps the pattern
+// code working unchanged if a board splits them across ports.
 GPIO_TypeDef *led_ports[8] = {GPIOB, GPIOB, GPIOB, GPIOB,
                               GPIOB, GPIOB, GPIOB, GPIOB};
 uint16_t led_pins[8] = {GPIO_PIN_0, GPIO_PIN_1, GPIO_PIN_2, GPIO_PIN_3,
                         GPIO_PIN_4, GPIO_PIN_5, GPIO_PIN_6, GPIO_PIN_7};
 
 /* Private function prototypes -----------------------------------------------*/
-void SystemClock_Config(void);
-static void MX_GPIO_Init(void);
-static void MX_TIM16_Init(void);
-void TIM16_IRQHandler(void);
-void turn_off_all_leds(void);
-void update_led_pattern(void);
+void SystemClock_Config(void);    // HSI at 8 MHz, identical to Task 1
+static void MX_GPIO_Init(void);   // PB0 to PB7 as outputs
+static void MX_TIM16_Init(void);  // 1 Hz update interrupt
+void TIM16_IRQHandler(void);      // sets the flag and nothing else
+void turn_off_all_leds(void);     // blank the row
+void update_led_pattern(void);    // advance one step of the running light
 
+// Writes all eight LEDs low. Called before lighting the new one so we never
+// have to remember which LED was on last.
 void turn_off_all_leds(void) {
   // task 2 solution start
-  // walk the arrays and write every led low
   for (uint8_t i = 0; i < 8; i++) {
     HAL_GPIO_WritePin(led_ports[i], led_pins[i], GPIO_PIN_RESET);
   }
   // task 2 solution end
 }
 
+// One step of the running light. Clear, light the current index, then work out
+// the next index.
 void update_led_pattern(void) {
   // task 2 solution start
-  // clear everything then light only the current one
   turn_off_all_leds();
   HAL_GPIO_WritePin(led_ports[current_led], led_pins[current_led],
                     GPIO_PIN_SET);
 
-  // Reverse at the edges before stepping, so 0 and 7 appear exactly once:
-  // 0,1,...,6,7,6,...,1,0,1,...
+  // The whole trick of this task. Flip direction AFTER lighting the end LED
+  // but BEFORE stepping, so the end LED is displayed once and then left.
+  // Flipping after the step would light 7, step to 8, notice, come back to 7,
+  // and 7 would appear twice.
+  // Trace: at 7 we light 7, set direction to -1, step to 6.
+  //        at 0 we light 0, set direction to +1, step to 1.
+  // Giving 0,1,2,3,4,5,6,7,6,5,4,3,2,1,0,1,2,... as the brief requires.
   if (current_led == 7) {
     direction = -1;
   } else if (current_led == 0) {
@@ -89,8 +99,9 @@ int main(void) {
 
   while (1) {
     // task 2 solution start
-    // ISR only raises the flag. main loop sees it, clears it and does the
-    // gpio work here so the interrupt itself stays short
+    // Poll the flag, clear it first, then do the slow GPIO work. Clearing
+    // before the work rather than after means a timer tick landing mid update
+    // is still seen on the next pass instead of being wiped out.
     if (timer_event) {
       timer_event = 0;
       update_led_pattern();
@@ -166,9 +177,12 @@ static void MX_GPIO_Init(void) {
   @brief TIM16 interrupt handler
 */
 void TIM16_IRQHandler(void) {
-  HAL_TIM_IRQHandler(&htim16); // Clears the update flag
+  HAL_TIM_IRQHandler(&htim16); // clears UIF, otherwise this refires forever
   // task 2 solution start
-  timer_event = 1; // Main loop does the GPIO work
+  // Two register writes and out. No GPIO work here on purpose: while the CPU
+  // is inside a handler other interrupts wait, so a long handler makes the
+  // whole system late. Tasks 3 to 6 add buttons and an ADC that would suffer.
+  timer_event = 1;
   // task 2 solution end
 }
 

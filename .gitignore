@@ -42,3 +42,6 @@ CLAUDE.md
 .clangd
 main.pdf
 Practical_1A/prac_01A_*.pdf
+
+# macOS
+.DS_Store

@@ -33,23 +33,27 @@ GPIO_TypeDef *led_ports[8] = {GPIOB, GPIOB, GPIOB, GPIOB,
 uint16_t led_pins[8] = {GPIO_PIN_0, GPIO_PIN_1, GPIO_PIN_2, GPIO_PIN_3,
                         GPIO_PIN_4, GPIO_PIN_5, GPIO_PIN_6, GPIO_PIN_7};
 
-// Timer event flag (set by ISR)
-volatile uint8_t timer_event = 0;
+volatile uint8_t timer_event = 0; // set by the ISR, cleared by the main loop
 
-// Mode enumeration
+// Named modes instead of raw numbers, so the switch below reads as English.
+// MODE_OFF is the power on state, everything dark until a button is pressed.
 typedef enum { MODE_1 = 0, MODE_2, MODE_3, MODE_OFF } LED_Mode;
 volatile LED_Mode current_mode = MODE_OFF;
 
-// Mode 1 & 2 shared variables
+// Shared by modes 1 and 2, which walk the same index in opposite polarity.
 volatile uint8_t current_led = 0;
 volatile int8_t direction = 1;
 
-// Speed toggle variables
 #define DEBOUNCE_MS 50
-uint32_t last_button_time[4] = {0, 0, 0, 0};
-uint8_t speed_state = 0; // 0 = slow (1s), 1 = fast (0.5s)
 
-// Mode 3 state machine
+// One timestamp per button, not one shared. With a single shared timestamp,
+// pressing PA1 would lock PA0, PA2 and PA3 out for the next 50 ms.
+uint32_t last_button_time[4] = {0, 0, 0, 0};
+
+uint8_t speed_state = 0; // 0 is 1 s per step, 1 is 0.5 s, survives mode changes
+
+// Mode 3 runs as three named states rather than a sequence of delays.
+// IDLE picks a new pattern, DISPLAY holds it, TURN_OFF removes LEDs one by one.
 typedef enum {
   SPARKLE_IDLE = 0,
   SPARKLE_DISPLAY,
@@ -57,31 +61,30 @@ typedef enum {
 } SparkleState;
 
 volatile SparkleState sparkle_state = SPARKLE_IDLE;
-volatile uint8_t sparkle_pattern = 0;
-volatile uint32_t sparkle_display_until = 0;
-volatile uint32_t sparkle_next_off_time = 0;
-volatile uint8_t sparkle_off_index = 0;
-volatile uint8_t sparkle_leds_on[8]; // Track which LEDs are currently on
-volatile uint8_t sparkle_num_leds_on = 0;
+volatile uint8_t sparkle_pattern = 0;        // random byte, one bit per LED
+volatile uint32_t sparkle_display_until = 0; // tick when the hold ends
+volatile uint32_t sparkle_next_off_time = 0; // tick when the next LED goes out
+volatile uint8_t sparkle_off_index = 0;      // how far through the off list
+volatile uint8_t sparkle_leds_on[8];         // indices of the lit LEDs
+volatile uint8_t sparkle_num_leds_on = 0;    // how many of that array are valid
 
-// Current period reference
-uint32_t current_period_ms = 1000;
+uint32_t current_period_ms = 1000; // last period written, for reference
 
 /* Private function prototypes -----------------------------------------------*/
-void SystemClock_Config(void);
-static void MX_GPIO_Init(void);
-static void MX_TIM16_Init(void);
-void TIM16_IRQHandler(void);
+void SystemClock_Config(void);   // HSI at 8 MHz
+static void MX_GPIO_Init(void);  // LEDs out on port B, 4 buttons in on port A
+static void MX_TIM16_Init(void); // PSC fixed, ARR retuned at runtime
+void TIM16_IRQHandler(void);     // sets the flag only
 
-void clear_all_leds(void);
-void turn_on_led(uint8_t index);
-void turn_off_led(uint8_t index);
-void change_timer_period(uint32_t new_period_ms);
-void handle_buttons(void);
-void set_mode(LED_Mode new_mode);
-void mode1_update(void);
-void mode2_update(void);
-void mode3_update(void);
+void clear_all_leds(void);                        // all eight low
+void turn_on_led(uint8_t index);                  // one pin high by index
+void turn_off_led(uint8_t index);                 // one pin low by index
+void change_timer_period(uint32_t new_period_ms); // retune the live timer
+void handle_buttons(void);        // debounce and edge detect all four
+void set_mode(LED_Mode new_mode); // switch mode and reset every mode variable
+void mode1_update(void);          // running light
+void mode2_update(void);          // inverse running light, a moving gap
+void mode3_update(void);          // sparkle, non blocking state machine
 
 void clear_all_leds(void) {
   // task 4 solution start
@@ -159,12 +162,12 @@ void handle_buttons(void) {
   // task 4 solution end
 }
 
+// Switching modes has to leave no residue. The brief asks for all LEDs cleared
+// on a mode change, and resetting the index, direction and sparkle state means
+// each mode always starts the same way instead of resuming mid pattern.
 void set_mode(LED_Mode new_mode) {
   // task 4 solution start
   current_mode = new_mode;
-
-  // wipe the leds and reset every mode variable so the new mode
-  // always starts from the same clean state
   clear_all_leds();
 
   current_led = 0;
@@ -211,15 +214,20 @@ void mode2_update(void) {
   // task 4 solution end
 }
 
+// The idea worth explaining at the demo. Sparkle needs waits of random length,
+// but HAL_Delay would freeze the loop and the buttons would stop responding
+// for up to 1.5 s. So nothing waits. Each state writes down the tick when its
+// next step is due and returns immediately. The main loop calls this function
+// thousands of times a second and each call just asks "is it time yet".
 void mode3_update(void) {
   // task 4 solution start
-  // sparkle runs as a small state machine so nothing ever blocks.
-  // every call checks the time and decides if the next step is due
   uint32_t now = HAL_GetTick();
 
   switch (sparkle_state) {
   case SPARKLE_IDLE:
-    // fresh cycle. grab a random byte, each bit says if that led is on
+    // One random byte covers all eight LEDs, bit i decides LED i. Each LED is
+    // therefore on with probability one half, and all eight lighting at once
+    // is 1 in 256, which is why a short video may never show it.
     sparkle_pattern = (uint8_t)(rand() & 0xFF);
 
     sparkle_num_leds_on = 0;
@@ -276,7 +284,9 @@ int main(void) {
   MX_GPIO_Init();
   MX_TIM16_Init();
 
-  // Seed random number generator
+  // rand() is a fixed sequence unless seeded. HAL_GetTick here is only a few
+  // milliseconds after reset every time, so the sparkle pattern is not truly
+  // different between power cycles. Good enough for a visual effect.
   srand(HAL_GetTick());
 
   clear_all_leds();
@@ -308,8 +318,9 @@ int main(void) {
       }
     }
 
-    // Mode 3 requires continuous polling to operate its state machine delays
-    // accurately
+    // Modes 1 and 2 step on the timer flag, so they run inside the if above.
+    // Mode 3 has its own random timing and is polled every pass instead, which
+    // is why it sits outside the timer_event block.
     if (current_mode == MODE_3) {
       mode3_update();
     }

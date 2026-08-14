@@ -13,12 +13,12 @@
 #include "main.h"
 
 /* ---------- Function prototypes ---------- */
-static void GPIO_Init(void);
-static void ADC_Init(void);
-static void write_led_byte(uint8_t pattern);
+static void GPIO_Init(void);                 // PA5 analog in, PB0 to PB7 out
+static void ADC_Init(void);                  // calibrate, configure, enable
+static void write_led_byte(uint8_t pattern); // one write drives all eight LEDs
 
 int main(void) {
-  HAL_Init(); // still fine to call - only sets up SysTick/core clocks
+  HAL_Init(); // only sets up SysTick and core clocks, no ADC involvement
   GPIO_Init();
   ADC_Init();
 
@@ -97,13 +97,16 @@ void ADC1_COMP_IRQHandler(void) {
     // reading DR gives the 12 bit result and clears the EOC flag in one go
     uint32_t adc_val = ADC1->DR;
 
-    // scale 0 to 4095 down to 0 to 8 leds. the plus 2048 makes the divide
-    // round to nearest instead of always down, so led number k switches
-    // on at adc_val equal to 512k minus 256, worked out in the report
+    // Map 0 to 4095 onto 0 to 8 LEDs. Integer division always truncates, so
+    // adding half a step (2048 out of 4096) before dividing turns it into
+    // round to nearest. Effect: LED k switches on at 512k minus 256 counts,
+    // which is the threshold worked out in the report.
+    // Multiply before divide, otherwise the division would reach zero first
+    // and throw away all the precision.
     uint8_t leds_to_light = (uint8_t)((adc_val * 8 + 2048) / 4096);
 
-    // bar graph pattern, k leds on means the lowest k bits are 1.
-    // shift 1 up by k then subtract 1
+    // Bar graph, not a binary number. k LEDs lit means the lowest k bits are 1.
+    // 1 shifted up by k, minus 1, gives exactly that: k=3 gives 0b00000111.
     uint8_t output_pattern = (uint8_t)((1U << leds_to_light) - 1U);
 
     write_led_byte(output_pattern);
@@ -112,6 +115,9 @@ void ADC1_COMP_IRQHandler(void) {
 }
 
 /* ---------- Helper: write an 8-bit pattern to PB0-PB7 ---------- */
+// Read, clear the low byte, or in the new pattern, write back. The read and
+// mask matter: writing the pattern straight to ODR would also zero PB8 to
+// PB15. All eight LEDs change in one store, so no visible tearing.
 static void write_led_byte(uint8_t pattern) {
   uint32_t odr = GPIOB->ODR;
   odr &= ~(0xFFU);

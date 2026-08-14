@@ -41,23 +41,23 @@ uint16_t led_pins[8] = {GPIO_PIN_0, GPIO_PIN_1, GPIO_PIN_2, GPIO_PIN_3,
 // staying far below any intentional double press.
 #define DEBOUNCE_MS 50
 // task 3 solution end
+// Millisecond stamp of the last press we accepted. Everything inside the
+// DEBOUNCE_MS window after it is treated as chatter and thrown away.
 uint32_t last_button_press_time = 0;
 
-// Speed state: 0 = slow (1s), 1 = fast (0.5s)
-uint8_t speed_state = 0;
+uint8_t speed_state = 0; // 0 is slow at 1 s per step, 1 is fast at 0.5 s
 
-// Current ARR value (stored for reference)
-uint32_t current_arr = 999;
+uint32_t current_arr = 999; // last value written to ARR, kept for reference
 
 /* Private function prototypes -----------------------------------------------*/
-void SystemClock_Config(void);
-static void MX_GPIO_Init(void);
-static void MX_TIM16_Init(void);
-void TIM16_IRQHandler(void);
-void turn_off_all_leds(void);
-void update_led_pattern(void);
-void handle_button_press(void);
-void change_timer_period(uint32_t new_period_ms);
+void SystemClock_Config(void);   // HSI at 8 MHz
+static void MX_GPIO_Init(void);  // LEDs out on port B, button in on PA0
+static void MX_TIM16_Init(void); // PSC fixed at 7999, ARR changes at runtime
+void TIM16_IRQHandler(void);     // sets the flag only
+void turn_off_all_leds(void);    // blank the row
+void update_led_pattern(void);   // one step of the running light
+void handle_button_press(void);  // edge detect plus debounce, polled in main
+void change_timer_period(uint32_t new_period_ms); // retune the live timer
 
 void turn_off_all_leds(void) {
   // task 3 solution start
@@ -84,36 +84,59 @@ void update_led_pattern(void) {
   // task 3 solution end
 }
 
+// Changes the step speed on a running timer. The brief is specific here:
+// keep the prescaler at 7999, write TIM16->ARR directly, reset TIM16->CNT,
+// and do not call the init function again. Re initialising would stop the
+// timer, rewrite every register and restart it, which is both slower and
+// visible as a stutter in the pattern.
 void change_timer_period(uint32_t new_period_ms) {
   // task 3 solution start
-  // Timer clock is 1000 Hz (prescaler fixed at 7999), so one count = 1 ms:
-  // ARR = period_ms - 1
+  // Timer clock is 1 kHz because PSC stays at 7999, so one count is 1 ms and
+  // ARR is just the period in ms minus one.
   uint32_t new_arr = new_period_ms - 1;
 
-  TIM16->ARR = new_arr; // written to the preload register (ARPE = 1)
-  TIM16->CNT = 0;       // restart the current cycle from zero
+  // ARPE is on, so this lands in the shadow register and takes effect at the
+  // next rollover rather than immediately.
+  TIM16->ARR = new_arr;
+
+  // Reset the count so the new period starts now. Without this, pressing the
+  // button at count 800 with a new ARR of 499 leaves CNT already past ARR,
+  // and the counter has to wrap all the way through 65535 before reloading.
+  TIM16->CNT = 0;
   // task 3 solution end
 
-  // Store the new ARR value for reference
   current_arr = new_arr;
 }
 
+// Called every pass of the main loop. Two independent filters have to agree
+// before a press counts.
 void handle_button_press(void) {
   // task 3 solution start
+  // HAL_GetTick is a millisecond counter incremented by the SysTick interrupt.
+  // Comparing timestamps is non blocking, unlike HAL_Delay which would freeze
+  // the running light for the whole debounce window.
   uint32_t now = HAL_GetTick();
 
-  // PA0 is active low (pressed = GPIO_PIN_RESET)
+  // Active low. The pull up holds the pin at 3.3 V when nothing is happening,
+  // and pressing shorts it to ground, so pressed reads RESET.
   GPIO_PinState state = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0);
 
-  // Remember the previous sample so only the press edge triggers, not holding
+  // static, so it survives between calls. Starts at SET, the released level.
   static GPIO_PinState prev_state = GPIO_PIN_SET;
 
+  // Filter 1, the edge: low now and high last time, so this is the moment of
+  // pressing. Holding the button down stays low on both samples and does
+  // nothing, which is what stops one long press repeating.
+  // Filter 2, the deadline: ignore anything within DEBOUNCE_MS of the last
+  // accepted press. The contacts chatter for a few ms, and this swallows it.
   if (state == GPIO_PIN_RESET && prev_state == GPIO_PIN_SET &&
       (now - last_button_press_time) >= DEBOUNCE_MS) {
     last_button_press_time = now;
-    speed_state ^= 1;
+    speed_state ^= 1; // XOR with 1 flips 0 to 1 and 1 to 0
     change_timer_period(speed_state ? 500 : 1000);
   }
+
+  // Always update, inside the if or not, otherwise the edge is never seen.
   prev_state = state;
   // task 3 solution end
 }
@@ -137,11 +160,12 @@ int main(void) {
   change_timer_period(1000);
   HAL_TIM_Base_Start_IT(&htim16);
 
+  // Two jobs sharing one loop, neither blocking the other. The button is
+  // sampled thousands of times a second while the LED still steps on the
+  // timer. A HAL_Delay based debounce would stall the pattern instead.
   while (1) {
-    // Handle button press (debounced)
     handle_button_press();
 
-    // Handle timer event
     if (timer_event) {
       timer_event = 0;
       update_led_pattern();
@@ -213,7 +237,9 @@ static void MX_GPIO_Init(void) {
     HAL_GPIO_Init(led_ports[i], &GPIO_InitStruct);
   }
 
-  // Configure PA0 as input with pull-up (button active low)
+  // PA0 as an input. The pull up matters: the button only connects the pin to
+  // ground, nothing pulls it high, so without it a released pin floats and
+  // reads random noise.
   GPIO_InitStruct.Pin = GPIO_PIN_0;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
