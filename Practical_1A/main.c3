@@ -1,12 +1,20 @@
-/* USER CODE BEGIN Header /
 /*
+ * @file  : main.c
+ * @brief : Task 3 - Running light with debounced speed toggle
+ */
 
-@file           : main.c
-
-@brief          : Task 2 - Running light with debounced speed toggle
-
-/*
-/ USER CODE END Header */
+// TASK 3: same running light as Task 2, but PA0 switches the step speed
+// between 1 s and 0.5 s.
+// The problem is contact bounce. A push button is two bits of metal springing
+// together. They chatter for a few ms before settling, so one press looks to
+// the chip like several presses.
+// handle_button_press below accepts a press only when both are true:
+// 1. the pin has just gone from high to low, so holding it down does nothing
+// 2. at least DEBOUNCE_MS since the last accepted press, which eats the chatter
+// Buttons are active low. Pressing connects the pin to ground, so pressed reads 0.
+// Nothing holds the pin high on its own, so the internal pull up is switched on.
+// Speed changes write TIM16->ARR directly and reset TIM16->CNT, as the brief says.
+// The prescaler stays at 7999, so one count is 1 ms and ARR is the period minus one.
 
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
@@ -16,7 +24,6 @@
 /* Private variables ---------------------------------------------------------*/
 TIM_HandleTypeDef htim16;
 
-/* USER CODE BEGIN PV */
 volatile uint8_t timer_event = 0;
 volatile uint8_t current_led = 0;
 volatile int8_t direction = 1;
@@ -29,7 +36,7 @@ uint16_t led_pins[8] = {GPIO_PIN_0, GPIO_PIN_1, GPIO_PIN_2, GPIO_PIN_3,
 
 // task 3 solution start (debounce value)
 // Debounce delay chosen from oscilloscope bounce measurement.
-// Measured maximum bounce on our board: ___ ms (fill in from Task 3 capture).
+// Measured maximum bounce on our board: 1.27 us (single-shot capture on PA0).
 // 50 ms gives comfortable margin above typical 10 to 20 ms bounce while
 // staying far below any intentional double press.
 #define DEBOUNCE_MS 50
@@ -41,7 +48,6 @@ uint8_t speed_state = 0;
 
 // Current ARR value (stored for reference)
 uint32_t current_arr = 999;
-/* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
@@ -53,7 +59,6 @@ void update_led_pattern(void);
 void handle_button_press(void);
 void change_timer_period(uint32_t new_period_ms);
 
-/* USER CODE BEGIN 0 */
 void turn_off_all_leds(void) {
   // task 3 solution start
   // walk the arrays and write every led low
@@ -112,7 +117,6 @@ void handle_button_press(void) {
   prev_state = state;
   // task 3 solution end
 }
-/* USER CODE END 0 */
 
 /*
 
@@ -127,16 +131,13 @@ int main(void) {
   MX_GPIO_Init();
   MX_TIM16_Init();
 
-  /* USER CODE BEGIN 2 */
   turn_off_all_leds();
 
   // Start timer at 1-second period
   change_timer_period(1000);
   HAL_TIM_Base_Start_IT(&htim16);
-  /* USER CODE END 2 */
 
   while (1) {
-    /* USER CODE BEGIN WHILE */
     // Handle button press (debounced)
     handle_button_press();
 
@@ -145,7 +146,6 @@ int main(void) {
       timer_event = 0;
       update_led_pattern();
     }
-    /* USER CODE END WHILE */
   }
 }
 

@@ -4,6 +4,16 @@
  * Output: PB4 (Byte of LEDs bit D4)
  * Signal: 100 Hz, 30% duty cycle, generated entirely in software
  */
+// A timer on its own only makes evenly spaced interrupts, never an uneven wave.
+// So the work is split in two.
+// Stage 1, hardware: make the interrupt fast. PSC 7 divides 8 MHz to 1 MHz.
+// ARR 99 divides that to 10 kHz, so the ISR fires every 100 microseconds.
+// Stage 2, software: a counter in the ISR runs 0 to 99 and starts over.
+// 100 interrupts at 100 us each is 10 ms, which is 100 Hz.
+// The pin is high while the counter is under 30 and low otherwise, so it is
+// high for 30 of every 100 ticks. That is 30% duty and a 3 ms pulse.
+// The number of software steps sets the resolution. 100 steps means the duty
+// cycle can only be set in 1% jumps.
 #include "stm32f0xx.h"
 
 // task 6 solution start

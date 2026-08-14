@@ -1,9 +1,22 @@
-/* USER CODE BEGIN Header */
 /**
   @file           : main.c
   @brief          : Multi-mode LED control with timer interrupts skeleton
   */
-/* USER CODE END Header */
+
+// TASK 4: Tasks 1 to 3 combined. Four buttons, three modes.
+// PA0 toggles speed 1 s or 0.5 s, works in every mode.
+// PA1 picks mode 1, running light.
+// PA2 picks mode 2, inverse running light, all on except a moving gap.
+// PA3 picks mode 3, sparkle.
+// Board starts in MODE_OFF with everything dark.
+// Each button has its own debounce timestamp and its own remembered previous
+// state in the arrays below. One shared timestamp would let a press on one
+// button lock the other three out for 50 ms.
+// Mode 3 is a state machine because it waits for random amounts of time.
+// A plain delay would freeze the loop and the buttons would stop responding.
+// Instead of waiting, it writes down when the next step is due and returns.
+// Every pass through the main loop it checks whether that moment has arrived.
+// Nothing ever blocks. See mode3_update below.
 
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
@@ -14,7 +27,6 @@
 /* Private variables ---------------------------------------------------------*/
 TIM_HandleTypeDef htim16;
 
-/* USER CODE BEGIN PV */
 // LED arrays
 GPIO_TypeDef *led_ports[8] = {GPIOB, GPIOB, GPIOB, GPIOB,
                               GPIOB, GPIOB, GPIOB, GPIOB};
@@ -54,7 +66,6 @@ volatile uint8_t sparkle_num_leds_on = 0;
 
 // Current period reference
 uint32_t current_period_ms = 1000;
-/* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
@@ -62,7 +73,6 @@ static void MX_GPIO_Init(void);
 static void MX_TIM16_Init(void);
 void TIM16_IRQHandler(void);
 
-/* USER CODE BEGIN PFP */
 void clear_all_leds(void);
 void turn_on_led(uint8_t index);
 void turn_off_led(uint8_t index);
@@ -72,9 +82,7 @@ void set_mode(LED_Mode new_mode);
 void mode1_update(void);
 void mode2_update(void);
 void mode3_update(void);
-/* USER CODE END PFP */
 
-/* USER CODE BEGIN 0 */
 void clear_all_leds(void) {
   // task 4 solution start
   // walk over all 8 leds and write them low so the board goes dark
@@ -257,7 +265,6 @@ void mode3_update(void) {
   }
   // task 4 solution end
 }
-/* USER CODE END 0 */
 
 /**
   @brief  The application entry point.
@@ -269,17 +276,14 @@ int main(void) {
   MX_GPIO_Init();
   MX_TIM16_Init();
 
-  /* USER CODE BEGIN 2 */
   // Seed random number generator
   srand(HAL_GetTick());
 
   clear_all_leds();
   change_timer_period(1000);
   HAL_TIM_Base_Start_IT(&htim16);
-  /* USER CODE END 2 */
 
   while (1) {
-    /* USER CODE BEGIN WHILE */
     // Check for debounced button presses
     handle_buttons();
 
@@ -309,7 +313,6 @@ int main(void) {
     if (current_mode == MODE_3) {
       mode3_update();
     }
-    /* USER CODE END WHILE */
   }
 }
 

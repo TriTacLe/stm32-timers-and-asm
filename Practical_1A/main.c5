@@ -1,3 +1,15 @@
+// TASK 5: read a DC voltage on PA5 and show it as a bar of LEDs on PB0 to PB7.
+// Written straight to registers, no HAL drivers.
+// The ADC compares the input against the 3.3 V reference and reports the
+// fraction as a 12 bit number. 0 V gives 0, 3.3 V gives 4095.
+// Three ordering rules that break this silently if ignored:
+// 1. Calibration only runs while the ADC is disabled. Enable it first and
+//    calibration quietly does nothing.
+// 2. After enabling, wait for the ready flag before starting a conversion.
+// 3. Reading ADC1->DR gives the result and clears the done flag in one go.
+//    No separate clear, and no reading it twice.
+// Continuous mode means it converts, interrupts, then starts the next
+// conversion by itself. main starts it once and then does nothing forever.
 #include "main.h"
 
 /* ---------- Function prototypes ---------- */

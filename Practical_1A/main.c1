@@ -1,4 +1,3 @@
-/* USER CODE BEGIN Header */
 /**
  ******************************************************************************
  * @file           : main.c
@@ -15,13 +14,20 @@
  *
  ******************************************************************************
  */
-/* USER CODE END Header */
+
+// TASK 1: blink LED0 on PB0 and measure it on the scope.
+// TIM16 counts the 8 MHz clock.
+// PSC 7999 keeps 1 tick out of every 8000, so one count is 1 ms.
+// ARR 999 counts 0 to 999 then rolls over, so once per second.
+// Rolling over raises a flag. The NVIC sees it and calls TIM16_IRQHandler.
+// The handler flips the pin, so a full on off cycle takes 2 seconds.
+// main only sets things up. The timer runs on its own in hardware.
 
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 
 /* Private includes ----------------------------------------------------------*/
-#include "stm32f0xx.h"
+#include "stm32f0xx.h" // CMSIS giving register access (TIM16->ARR, GPIOB->ODR)
 #include <stdint.h>
 
 /* Private typedef -----------------------------------------------------------*/
@@ -29,49 +35,49 @@
 /* Private macro -------------------------------------------------------------*/
 
 /* Private variables ---------------------------------------------------------*/
+// HAL handle. HAL is stateless C, so every call need struct carrying pointer.
 TIM_HandleTypeDef htim16;
 
-/* USER CODE BEGIN PV */
 // LED toggle pin (PB0 = LED0)
 
-// task 1 solution start
+//
+// names the pin once so init and isr all refer to the same thing
 #define LED0_PORT GPIOB
 #define LED0_PIN GPIO_PIN_0
-// task 1 solution end
-
-/* USER CODE END PV */
+//
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_TIM16_Init(void);
 
-/* USER CODE BEGIN PFP */
+//
+// startup_stm32f051x8 puts this variable in the vector table at the TIM16 slot
+// and later declaes it spelling is important
 void TIM16_IRQHandler(void);
-/* USER CODE END PFP */
+//
 
 /* Private user code ---------------------------------------------------------*/
-/* USER CODE BEGIN 0 */
-/* USER CODE END 0 */
 
 /**
  * @brief  The application entry point.
  * @retval int
  */
 int main(void) {
-  HAL_Init();
-  SystemClock_Config();
+  //
+  // order important
+  HAL_Init();           // flash prefetch and systick
+  SystemClock_Config(); // HSI 8 mhz
 
+  // Pin and timer setup
   MX_GPIO_Init();
   MX_TIM16_Init();
 
-  /* USER CODE BEGIN 2 */
   // Start TIM16 in interrupt mode
   HAL_TIM_Base_Start_IT(&htim16);
-  /* USER CODE END 2 */
 
   while (1) {
-    // Main loop does nothing – all work is in the ISR
+    // Main loop does nothing all work is in the ISR
   }
 }
 
@@ -101,16 +107,17 @@ void SystemClock_Config(void) {
 }
 
 /**
- * @brief TIM16 Initialization|
- * Insert your calculated values
+ * @brief TIM16 Initialization
+ * Insert calculated values
  */
 static void MX_TIM16_Init(void) {
   htim16.Instance = TIM16;
-  // task 1 solution start (PSC and ARR values)
+  // (PSC and ARR values) Prescaler
   htim16.Init.Prescaler = 7999; // 8 MHz / (7999+1) = 1 kHz timer clock
   htim16.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim16.Init.Period = 999; // 1 kHz / (999+1) = 1 Hz update event
-  // task 1 solution end
+  //
+
   htim16.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim16.Init.RepetitionCounter = 0;
   htim16.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
@@ -121,10 +128,10 @@ static void MX_TIM16_Init(void) {
 }
 
 /**
- * @brief GPIO Initialization – PB0 as output (LED0)
+ * @brief GPIO Initialization PB0 as output (LED0)
  */
 static void MX_GPIO_Init(void) {
-  // task 1 solution start
+  //
   // port clock first, gpio registers do nothing without it
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
@@ -139,24 +146,24 @@ static void MX_GPIO_Init(void) {
   // start with the led off so the first toggle turns it on
   HAL_GPIO_WritePin(LED0_PORT, LED0_PIN, GPIO_PIN_RESET);
 
-  // PB1 is unused but sits next to PB0; left floating it picks up the
-  // toggle capacitively and LED1 ghost-flickers, so drive it low
+  // PB1 is unused but sits next to PB0. left floating it picks up the
+  // toggle capacitively and LED1 fake flicker, so drive it low
   GPIO_InitStruct.Pin = GPIO_PIN_1;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_RESET);
-  // task 1 solution end
+  //
 }
 
 /**
- * @brief TIM16 interrupt handler – toggles PB0 each time
+ * @brief TIM16 interrupt handler toggles PB0 each time
  */
 void TIM16_IRQHandler(void) {
-  // task 1 solution start
+  //
   // let HAL clear the update flag, then flip the led. timer updates once
   // per second so the led blinks at 0.5 Hz on off cycle
   HAL_TIM_IRQHandler(&htim16);
   HAL_GPIO_TogglePin(LED0_PORT, LED0_PIN);
-  // task 1 solution end
+  //
 }
 
 /**
