@@ -12,13 +12,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # one install for the whole job. splitting this across a matrix meant
-      # apt ran once per level and took longer than every compile put together
+      # apt took eighteen minutes on one run while the compiles took twenty
+      # one seconds, so the toolchain comes from the cached action instead
       - name: Install the ARM toolchain
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            gcc-arm-none-eabi binutils-arm-none-eabi libnewlib-arm-none-eabi
+        uses: carlosperate/arm-none-eabi-gcc-action@v1
+        with:
+          release: "10.3-2021.10"
 
       - name: Build every optimisation level
         working-directory: Practical_1B/board
