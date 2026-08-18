@@ -12,11 +12,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # the texlive packages are the slow part, so keep the apt lists and
+      # the downloaded archives between runs
+      - name: Cache the apt archives
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/apt/archives/*.deb
+          key: texlive-${{ runner.os }}-v1
+
       - name: Install LaTeX
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            texlive-latex-recommended texlive-latex-extra texlive-fonts-recommended
+            texlive-latex-recommended texlive-latex-extra texlive-fonts-recommended \
+            poppler-utils
 
       - name: Check the filename against the brief
         working-directory: Practical_1B

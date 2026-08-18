@@ -8,79 +8,52 @@ on:
 
 jobs:
   build:
-    name: build ${{ matrix.opt }}
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        opt: ["-O0", "-O1", "-O2", "-Os"]
     steps:
       - uses: actions/checkout@v4
 
+      # one install for the whole job. splitting this across a matrix meant
+      # apt ran once per level and took longer than every compile put together
       - name: Install the ARM toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi
+          sudo apt-get install -y --no-install-recommends \
+            gcc-arm-none-eabi binutils-arm-none-eabi libnewlib-arm-none-eabi
 
-      - name: Build
-        working-directory: Practical_1B/board
-        run: make -j"$(nproc)" OPT=${{ matrix.opt }} BUILD_DIR=build${{ matrix.opt }}
-
-      - name: Report the section sizes
+      - name: Build every optimisation level
         working-directory: Practical_1B/board
         run: |
+          echo '### Code size by optimisation level' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          for opt in -O0 -O1 -O2 -Os; do
+            make -j"$(nproc)" OPT=$opt BUILD_DIR=build$opt >/dev/null
+            printf '%-4s %s\n' "$opt" \
+              "$(arm-none-eabi-size build$opt/Practical_1B.elf | tail -1)" \
+              >> "$GITHUB_STEP_SUMMARY"
+          done
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build each task target
+        working-directory: Practical_1B/board
+        run: |
+          for task in 2 4 5; do
+            make -j"$(nproc)" TASK=$task BUILD_DIR=build-task$task >/dev/null
+          done
+
+      - name: Run the Task 1 golden measure
+        working-directory: Practical_1B/Task1_PC
+        run: |
+          make >/dev/null
           {
-            echo "### ${{ matrix.opt }}"
+            echo '### Task 1 golden measure'
             echo '```'
-            arm-none-eabi-size build${{ matrix.opt }}/Practical_1B.elf
-            arm-none-eabi-nm --size-sort -S build${{ matrix.opt }}/Practical_1B.elf | tail -12
+            ./golden
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: firmware${{ matrix.opt }}
+          name: firmware
           path: |
-            Practical_1B/board/build${{ matrix.opt }}/Practical_1B.elf
-            Practical_1B/board/build${{ matrix.opt }}/Practical_1B.bin
-
-  tasks:
-    name: build TASK=${{ matrix.task }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        task: [2, 4, 5]
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install the ARM toolchain
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi
-
-      - name: Build
-        working-directory: Practical_1B/board
-        run: make -j"$(nproc)" TASK=${{ matrix.task }} BUILD_DIR=build_task${{ matrix.task }}
-
-  golden:
-    name: PC golden measure
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build and run
-        working-directory: Practical_1B/Task1_PC
-        run: |
-          make
-          ./golden | tee golden.txt
-
-      - name: Put the table in the summary
-        working-directory: Practical_1B/Task1_PC
-        run: |
-          {
-            echo '### Task 1 golden measure'
-            echo '```'
-            cat golden.txt
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+            Practical_1B/board/build-task*/Practical_1B.elf
+            Practical_1B/board/build-task*/Practical_1B.bin
