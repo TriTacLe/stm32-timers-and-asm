@@ -1,0 +1,86 @@
+name: Firmware
+
+on:
+  push:
+    branches: [main, "**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: build ${{ matrix.opt }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        opt: ["-O0", "-O1", "-O2", "-Os"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the ARM toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi
+
+      - name: Build
+        working-directory: Practical_1B/board
+        run: make -j"$(nproc)" OPT=${{ matrix.opt }} BUILD_DIR=build${{ matrix.opt }}
+
+      - name: Report the section sizes
+        working-directory: Practical_1B/board
+        run: |
+          {
+            echo "### ${{ matrix.opt }}"
+            echo '```'
+            arm-none-eabi-size build${{ matrix.opt }}/Practical_1B.elf
+            arm-none-eabi-nm --size-sort -S build${{ matrix.opt }}/Practical_1B.elf | tail -12
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware${{ matrix.opt }}
+          path: |
+            Practical_1B/board/build${{ matrix.opt }}/Practical_1B.elf
+            Practical_1B/board/build${{ matrix.opt }}/Practical_1B.bin
+
+  tasks:
+    name: build TASK=${{ matrix.task }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        task: [2, 4, 5]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the ARM toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi
+
+      - name: Build
+        working-directory: Practical_1B/board
+        run: make -j"$(nproc)" TASK=${{ matrix.task }} BUILD_DIR=build_task${{ matrix.task }}
+
+  golden:
+    name: PC golden measure
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and run
+        working-directory: Practical_1B/Task1_PC
+        run: |
+          make
+          ./golden | tee golden.txt
+
+      - name: Put the table in the summary
+        working-directory: Practical_1B/Task1_PC
+        run: |
+          {
+            echo '### Task 1 golden measure'
+            echo '```'
+            cat golden.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

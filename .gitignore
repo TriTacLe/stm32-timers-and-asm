@@ -2,8 +2,7 @@
 Practical_1A/build/
 Practical_1A/Debug/
 Practical_1A/Release/
-Practical_1B/board/build/
-Practical_1B/board/build_*/
+Practical_1B/board/build*/
 Practical_1B/Task1_PC/golden
 Practical_1B/Task1_PC/verify_fast
 Practical_1B/prac1B_*.pdf

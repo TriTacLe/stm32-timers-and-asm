@@ -1,0 +1,59 @@
+name: Report
+
+on:
+  push:
+    branches: [main, "**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install LaTeX
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            texlive-latex-recommended texlive-latex-extra texlive-fonts-recommended
+
+      - name: Check the filename against the brief
+        working-directory: Practical_1B
+        run: |
+          tex=$(ls prac1B_*.tex)
+          echo "found $tex"
+          # the brief asks for prac1B_studentnumber1_studentnumber2.pdf
+          echo "$tex" | grep -Eq '^prac1B_[a-z]{6}[0-9]{3}_[a-z]{6}[0-9]{3}\.tex$'
+
+      - name: Compile
+        working-directory: Practical_1B
+        run: |
+          for pass in 1 2; do
+            pdflatex -interaction=nonstopmode -halt-on-error prac1B_lxxtri004_shrgil004.tex >/dev/null
+          done
+          pdflatex -interaction=nonstopmode -halt-on-error prac1B_lxxtri004_shrgil004.tex | tail -3
+
+      - name: Fail on unresolved references
+        working-directory: Practical_1B
+        run: |
+          if grep -q 'undefined references' prac1B_lxxtri004_shrgil004.log; then
+            grep -n 'undefined\|Warning: Reference' prac1B_lxxtri004_shrgil004.log
+            exit 1
+          fi
+
+      - name: Count what still needs the bench
+        working-directory: Practical_1B
+        run: |
+          left=$(grep -c '\\bench{' prac1B_lxxtri004_shrgil004.tex)
+          pages=$(pdfinfo prac1B_lxxtri004_shrgil004.pdf 2>/dev/null | awk '/^Pages/{print $2}')
+          {
+            echo "### Report"
+            echo "Pages: ${pages:-unknown}"
+            echo "Bench placeholders left: $left"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prac1B-report
+          path: Practical_1B/prac1B_lxxtri004_shrgil004.pdf
