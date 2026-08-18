@@ -475,21 +475,23 @@ is written, which is 3 CPU cycles with the ADC clocked from PCLK/2 at 4 MHz.
 
 \begin{table}[h]
 \centering
-\begin{tabular}{llrrr}
+\begin{tabular}{llrrrr}
 \toprule
-Instruction & Role & Cycles & Iterations & Subtotal \\
+Instruction & Role & Cycles & Iterations & Subtotal & Running total \\
 \midrule
-\texttt{STR r4, [r0, \#ADC\_CR]} & start conversion & 2 & 1 & 2 \\
-\texttt{MOVS r2, \#250} & load delay count & 1 & 1 & 1 \\
-\texttt{SUBS r2, r2, \#1} & delay body & 1 & 250 & 250 \\
-\texttt{BNE delay\_loop} & delay branch & 3 taken, 1 final & 250 & 748 \\
-\texttt{LDR r3, [r0, \#ADC\_DR]} & read conversion & 2 & 1 & 2 \\
-\texttt{STR r3, [r1, \#DHR12R1]} & write DAC & 2 & 1 & 2 \\
-\texttt{B sample\_loop} & close the loop & 3 & 1 & 3 \\
+\texttt{STR r4, [r0, \#ADC\_CR]} & start conversion & 2 & 1 & 2 & 2 \\
+\texttt{MOVS r2, \#250} & load delay count & 1 & 1 & 1 & 3 \\
+\texttt{SUBS r2, r2, \#1} & delay body & 1 & 250 & 250 & 253 \\
+\texttt{BNE delay\_loop} & delay branch & 3 taken, 1 final & 250 & 748 & 1001 \\
+\texttt{LDR r3, [r0, \#ADC\_DR]} & read conversion & 2 & 1 & 2 & 1003 \\
+\texttt{STR r3, [r1, \#DHR12R1]} & write DAC & 2 & 1 & 2 & 1005 \\
+\texttt{B sample\_loop} & close the loop & 3 & 1 & 3 & 1008 \\
 \bottomrule
 \end{tabular}
 \caption{Cycle budget for the sample loop. The delay loop costs $4N-2 = 998$
-cycles for $N = 250$.}
+cycles for $N = 250$. The running total is counted from the start of the
+\texttt{ADSTART} write, so the sample and hold closes at cycle 5 and the DAC
+write completes at cycle 1005, leaving exactly 1000 cycles between them.}
 \label{tab:cycles}
 \end{table}
 
