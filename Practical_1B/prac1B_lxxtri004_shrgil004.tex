@@ -1,0 +1,621 @@
+% EEE3096S Practical 1B report, Group 79
+
+\documentclass[11pt]{article}
+\usepackage{hyperref}
+\usepackage{graphicx}
+\usepackage[a4paper, margin=2.5cm]{geometry}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{listings}
+\usepackage{xcolor}
+
+% every remaining bench measurement is wrapped in this so nothing unfilled
+% can be mistaken for a result
+\newcommand{\bench}[1]{\textcolor{red}{\textbf{[BENCH: #1]}}}
+
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  breaklines=true,
+  frame=single,
+  columns=fullflexible,
+  keepspaces=true,
+}
+
+\title{\textbf{EEE3096S Practical 1B} \\ Execution Timing and Cycle-Accurate Assembly on the UCT Dev Board}
+\author{Tri Tac Le, LXXTRI004 \\ Gil Sharon, SHRGIL004}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Golden Measure and PC Timing}
+
+\subsection{The function under test}
+
+The quantity computed throughout this practical is the integer square root of a
+32-bit unsigned input $x$, defined as the largest integer $r$ satisfying
+$r^2 \le x$. The golden version uses double precision arithmetic and the
+standard library \texttt{sqrt}, then clamps the result in both directions so
+that a rounding error at the top of the range cannot leak into the reference
+table:
+
+\begin{lstlisting}[language=C]
+uint32_t isqrt_golden(uint32_t x) {
+  uint32_t r = (uint32_t)sqrt((double)x);
+  while ((uint64_t)r * r > (uint64_t)x) r--;
+  while ((uint64_t)(r + 1) * (r + 1) <= (uint64_t)x) r++;
+  return r;
+}
+\end{lstlisting}
+
+The clamp matters at the top end. A \texttt{double} holds 53 significand bits,
+so every 32-bit input is represented exactly, but the square root of a value
+just below a perfect square can round up to that square and give an answer one
+too large. Both loops together make the returned value correct by construction
+rather than correct by assumption.
+
+\subsection{Prediction before timing}
+
+The prediction was made from an instruction count estimate before the timing
+run. One call performs a single \texttt{sqrtsd}, one conversion back to
+integer, and two multiply-and-compare pairs for the clamps, of which neither
+loop body executes in the common case. That is roughly 10 to 12 instructions,
+dominated by \texttt{sqrtsd}, which on this Skylake-derived core has a latency
+near 15 to 18 cycles. Treating the call as latency bound at the 2.60 GHz base
+clock gives
+
+\[
+t_{\text{pred}} \approx \frac{18~\text{cycles}}{2.60 \times 10^{9}~\text{Hz}}
+\approx 7~\text{ns per call}.
+\]
+
+The prediction is therefore about 7 ns per call, and the reasoning above is the
+basis for it.
+
+\subsection{Measured results}
+
+The host is an Intel Core i7-10750H, 2.60 GHz base and 5.00 GHz maximum turbo.
+Timing used \texttt{clock\_gettime(CLOCK\_MONOTONIC, \ldots)} around a loop
+whose input changes on every iteration, with the result stored to a
+\texttt{volatile} sink so the optimiser cannot delete the work. The program was
+built with \texttt{gcc -O2 -std=gnu11}.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lrr}
+\toprule
+Run & Repetitions & Time per call (ns) \\
+\midrule
+A & 1\,000\,000 & 1.617 \\
+B & 10\,000\,000 & 1.639 \\
+\midrule
+\multicolumn{2}{l}{Mean} & 1.628 \\
+\multicolumn{2}{l}{Spread} & 0.022 (1.33\% of mean) \\
+\bottomrule
+\end{tabular}
+\caption{Golden measure timing on the PC, two repetition counts.}
+\label{tab:pc-timing}
+\end{table}
+
+The time per call holds to within 1.33\% across a tenfold change in repetition
+count, so the measurement is stable.
+
+The measured 1.628 ns is roughly four times faster than the 7 ns predicted. The
+prediction treated the call as latency bound, but \texttt{sqrtsd} is pipelined
+and the loop iterations are independent of one another, so several calls are in
+flight at once and the throughput cost rather than the latency cost is what the
+loop pays. The core also runs well above its 2.60 GHz base clock under this
+load. Both effects push the measured value below the prediction, and the
+prediction was wrong in a way that is itself informative: it named latency where
+throughput governs.
+
+\subsection{Output table for the ten inputs}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{rrrrl}
+\toprule
+Input $x$ & $r$ & $r^2$ & $(r+1)^2$ & Check \\
+\midrule
+0 & 0 & 0 & 1 & pass \\
+1 & 1 & 1 & 4 & pass \\
+15 & 3 & 9 & 16 & pass \\
+16 & 4 & 16 & 25 & pass \\
+4095 & 63 & 3969 & 4096 & pass \\
+65535 & 255 & 65025 & 65536 & pass \\
+123456789 & 11111 & 123454321 & 123476544 & pass \\
+987654321 & 31426 & 987593476 & 987656329 & pass \\
+4294836225 & 65535 & 4294836225 & 4294967296 & pass \\
+4294967295 & 65535 & 4294836225 & 4294967296 & pass \\
+\bottomrule
+\end{tabular}
+\caption{Golden outputs with the bracketing squares for every input.}
+\label{tab:golden}
+\end{table}
+
+\subsection{Hand check written out in full}
+
+Take $x = 987654321$ with the reported result $r = 31426$.
+
+\begin{align*}
+r^2 &= 31426^2 = 31426 \times 31426 \\
+    &= 31426 \times 30000 + 31426 \times 1400 + 31426 \times 26 \\
+    &= 942\,780\,000 + 43\,996\,400 + 817\,076 \\
+    &= 987\,593\,476.
+\end{align*}
+
+Since $987\,593\,476 \le 987\,654\,321$, the value $r$ does not overshoot. Now
+the next integer:
+
+\begin{align*}
+(r+1)^2 &= 31427^2 = r^2 + 2r + 1 \\
+        &= 987\,593\,476 + 62\,852 + 1 \\
+        &= 987\,656\,329.
+\end{align*}
+
+Since $987\,656\,329 > 987\,654\,321$, no larger integer qualifies. The two
+inequalities together prove $\mathrm{isqrt}(987654321) = 31426$.
+
+\subsection{Answer to the Task 1 question}
+
+The golden output for the input 987654321 is \textbf{31426}. The measured time
+per call is \textbf{1.617 ns} in run A and \textbf{1.639 ns} in run B, using
+\textbf{1\,000\,000} and \textbf{10\,000\,000} repetitions respectively.
+
+A single call timed on its own is not reliable because the quantity being
+measured is smaller than the tools used to measure it. One call takes under two
+nanoseconds while \texttt{clock\_gettime} itself costs tens of nanoseconds, so
+the clock call would dominate the reading. On top of that, the first call runs
+with a cold branch predictor and cold caches, the core may still be at a low
+clock frequency, and the scheduler can preempt at any point. Averaging over
+millions of repetitions pushes all of those one-off costs into the noise.
+
+\section{Board Implementation and Timer Measurement}
+
+\subsection{Fast implementation}
+
+The board version avoids floating point entirely, since the Cortex-M0 has
+neither an FPU nor a hardware divider. It is the classic digit-by-digit
+restoring square root: two bits of the input shift into the remainder on each
+pass, and sixteen passes cover the full 32-bit range.
+
+\begin{lstlisting}[language=C]
+static uint32_t isqrt_fast(uint32_t n) {
+  uint32_t root = 0U, rem = 0U;
+  for (int i = 0; i < 16; i++) {
+    rem = (rem << 2) | (n >> 30);
+    n <<= 2;
+    root <<= 1;
+    if (rem > root) {
+      rem -= root + 1U;
+      root += 2U;
+    }
+  }
+  return root >> 1;
+}
+\end{lstlisting}
+
+Before it went into firmware the routine was checked on the PC against
+\texttt{isqrt\_golden} over 21\,245\,185 values: every input from 0 to
+$2^{20}$ exhaustively, every perfect square from $0^2$ to $65535^2$ together
+with its two neighbours, and 20 million pseudo-random 32-bit values. There were
+zero mismatches.
+
+On the board the same ten golden values from Table~\ref{tab:golden} are
+compiled into flash and compared at start-up. The green LED on PB11 lights when
+all ten match and the red LED on PB10 lights on any failure, so the pass or
+fail state is visible before any timing number is read.
+
+Observed result: \bench{state whether the green LED lit, and photograph it}.
+
+\subsection{Clock path}
+
+The system runs from the reset configuration: HSI at 8 MHz feeding SYSCLK
+directly, AHB prescaler 1, APB prescaler 1. No PLL is enabled. TIM3 sits on
+APB1, and because the APB1 prescaler is 1 the timer clock equals PCLK1 at
+8 MHz. The timer is then configured with
+
+\begin{align*}
+\text{PSC} &= 0 \quad \Rightarrow \quad
+f_{\text{cnt}} = \frac{8\,\text{MHz}}{0 + 1} = 8~\text{MHz}, \\
+\text{ARR} &= 65535 \quad \Rightarrow \quad
+T_{\text{wrap}} = \frac{65536}{8 \times 10^{6}} = 8.192~\text{ms},
+\end{align*}
+
+so one counter tick is $1/8\,\text{MHz} = 125$ ns.
+
+Reference manual sections used: RM0091 Section 6 for the clock tree from HSI
+through SYSCLK and the APB prescalers, and RM0091 Section 18 (general-purpose
+timers TIM2 and TIM3) for CNT, PSC, ARR and the update flag UIF.
+
+\subsection{Prediction before running}
+
+The \texttt{-O1} build compiles \texttt{isqrt\_fast} to 42 bytes of Thumb code,
+a loop of sixteen passes. Counting the loop body from the disassembly in
+Section~3, each pass is six or seven single-cycle data operations plus a taken
+branch, which on the M0 costs three cycles, so roughly ten cycles per pass. The
+call and return plus the timer reads add a small fixed cost:
+
+\[
+16 \times 10 \approx 160~\text{cycles} \quad \Rightarrow \quad
+160 \times 125~\text{ns} = 20~\mu\text{s} \;\text{(rounded)}\; \approx 20~\mu\text{s},
+\]
+
+which at 125 ns per tick is a predicted count span of about 160 ticks and a
+predicted time of about 20 $\mu$s. \bench{write this prediction down before the
+first run and record any change to it}
+
+\subsection{Measurement}
+
+PC13 idles high and is driven low for the timed section, so the low part of the
+trace is exactly the execution window. The counter is sampled immediately
+inside the low window on both sides.
+
+\begin{lstlisting}[language=C]
+GPIOC->BRR = (1U << PULSE_PIN);
+uint16_t before = (uint16_t)TIM3->CNT;
+sink = isqrt_fast(x);
+uint16_t after = (uint16_t)TIM3->CNT;
+GPIOC->BSRR = (1U << PULSE_PIN);
+single_call_span = (uint16_t)(after - before);
+\end{lstlisting}
+
+Subtracting two \texttt{uint16\_t} values handles a wrap on its own. If the
+counter passes 65535 during the call, the modulo-$2^{16}$ arithmetic of the
+subtraction still returns the true span, because the span is far shorter than
+one 8.192 ms counter period.
+
+\begin{itemize}
+  \item Measured count span for one call: \bench{value from single\_call\_span}
+  \item Time from the span: \bench{span} $\times$ 125 ns = \bench{result} $\mu$s
+  \item Scope pulse width on PC13: \bench{cursor delta}
+\end{itemize}
+
+\bench{Figure: single-call pulse on PC13, cursors on the falling and rising edge}
+
+\subsection{Wrap-around case}
+
+For the long run the firmware calls the function 200\,000 times, which at the
+predicted single-call time crosses the 8.192 ms wrap several hundred times. The
+update flag is polled inside the loop and counted, so the total is
+
+\[
+\text{ticks} = 65536 \times N_{\text{overflow}} + \left( \text{after} - \text{before} \right) \bmod 2^{16},
+\]
+
+and the mean per call is that total divided by 200\,000, times 125 ns.
+
+\begin{itemize}
+  \item Overflows counted: \bench{long\_run\_overflows}
+  \item Total ticks: \bench{long\_run\_ticks}
+  \item Mean time per call: \bench{long\_run\_ns\_per\_call}
+  \item Agreement with the single-call time: \bench{compare the two}
+\end{itemize}
+
+\subsection{Answer to the Task 2 question}
+
+Scope pulse width for one call: \bench{value} $\mu$s, count span
+\bench{value} ticks. The calculation from the divider values is
+
+\[
+t = \frac{\text{span} \times (\text{PSC}+1)}{f_{\text{HSI}}}
+  = \frac{\bench{span} \times 1}{8 \times 10^{6}}.
+\]
+
+Whether the system clock matches the 8 MHz HSI: \bench{state the result and how
+it was confirmed, for example by comparing the counter-derived time against the
+scope pulse, or by timing a known number of counter periods against the scope}.
+In Practical 1A the same board produced a 2.0038 s period where 2 s was
+expected, a 0.19\% error consistent with the HSI factory trim tolerance of about
+1\%, so a difference of this order is expected here as well.
+
+\section{Optimisation Flags}
+
+\subsection{Method}
+
+The same source was built four times with only the optimisation flag changed,
+using separate build directories so no object file was reused:
+
+\begin{lstlisting}[language=bash]
+make TASK=2 OPT=-O0 BUILD_DIR=build_O0
+make TASK=2 OPT=-O1 BUILD_DIR=build_O1
+make TASK=2 OPT=-O2 BUILD_DIR=build_O2
+make TASK=2 OPT=-Os BUILD_DIR=build_Os
+\end{lstlisting}
+
+Sizes come from \texttt{arm-none-eabi-size} on the resulting ELF, and the
+per-function sizes from \texttt{arm-none-eabi-nm --size-sort -S}. Toolchain:
+arm-none-eabi-gcc 16.2.0, newlib-nano, debug information enabled in all four
+builds so the comparison is like for like.
+
+\subsection{Prediction before the -O2 build}
+
+The \texttt{-O0} build keeps every local variable in a stack slot and reloads it
+on each use, so the loop body is dominated by \texttt{ldr} and \texttt{str}
+pairs which cost two cycles each. Optimised code keeps the same variables in
+registers. Counting the two disassemblies gives roughly 25 memory-touching
+instructions per pass at \texttt{-O0} against about 8 register operations at
+\texttt{-O1} and above, so a ratio of about \textbf{3} between the \texttt{-O0}
+time and the \texttt{-O2} time was predicted.
+
+\subsection{Results}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lrrrrr}
+\toprule
+Flag & Text (bytes) & \texttt{isqrt\_fast} (bytes) & Counter time ($\mu$s) & Scope width ($\mu$s) & Ratio to -O0 \\
+\midrule
+-O0 & 1964 & 94 & \bench{} & \bench{} & 1.00 \\
+-O1 & 1532 & 42 & \bench{} & \bench{} & \bench{} \\
+-O2 & 1672 & inlined & \bench{} & \bench{} & \bench{} \\
+-Os & 1540 & 38 & \bench{} & \bench{} & \bench{} \\
+\bottomrule
+\end{tabular}
+\caption{Optimisation level against code size and execution time. Text sizes are
+measured; timing columns are filled from the bench.}
+\label{tab:opt}
+\end{table}
+
+The size column is not monotonic, and the reason is visible in the symbol
+table. At \texttt{-O1} and \texttt{-Os} the function survives as a callable
+symbol. At \texttt{-O2} the symbol \texttt{isqrt\_fast} disappears entirely and
+\texttt{main} grows from 420 bytes to 664 bytes, because the compiler inlined
+the body at each of the five call sites. That is why \texttt{-O2} produces a
+larger image than \texttt{-O1} despite being the more aggressive level.
+\texttt{-Os} takes a middle path: it keeps one shared copy of the function and
+produces a constant-propagated clone
+\texttt{measure\_single\_call.constprop.0} for the call site whose argument is a
+compile-time constant.
+
+\subsection{Disassembly at -O2 and the transformation identified}
+
+The transformation is \textbf{function inlining}, applied to
+\texttt{isqrt\_fast} at every call site in \texttt{main}. The source lines it
+acts on are the body of \texttt{isqrt\_fast} in
+\texttt{Core/Src/main.c}, and the call sites are the loop inside
+\texttt{verify\_against\_golden}, the timed call inside
+\texttt{measure\_single\_call} and the loop inside \texttt{measure\_long\_run}.
+
+At \texttt{-O0} the routine is a separate function whose locals all live on the
+stack:
+
+\begin{lstlisting}
+08000308 <isqrt_fast>:
+ 8000308: push  {r7, lr}
+ 800030a: sub   sp, #24
+ 800030c: add   r7, sp, #0
+ 800030e: str   r0, [r7, #4]
+ ...
+ 800031e: ldr   r3, [r7, #16]
+ 8000320: lsls  r2, r3, #2
+ 8000322: ldr   r3, [r7, #4]
+ 8000324: lsrs  r3, r3, #30
+ 8000326: orrs  r3, r2
+ 8000328: str   r3, [r7, #16]
+\end{lstlisting}
+
+At \texttt{-O2} there is no such symbol. The same loop appears inline inside
+\texttt{main}, with every value held in a register and no stack traffic at all:
+
+\begin{lstlisting}
+ 8000264: movs  r1, #16
+ 8000266: movs  r2, #0
+ 8000268: movs  r3, #0
+ 800026a: ldr   r0, [r7, r5]
+ 800026c: lsrs  r4, r0, #30
+ 800026e: lsls  r3, r3, #2
+ 8000270: orrs  r3, r4
+ 8000272: lsls  r0, r0, #2
+ 8000274: lsls  r2, r2, #1
+ 8000276: cmp   r3, r2
+ 8000278: bls.n 8000280 <main+0xb0>
+ 800027a: subs  r3, r3, r2
+ 800027c: subs  r3, #1
+ 800027e: adds  r2, #2
+ 8000280: subs  r1, #1
+ 8000282: cmp   r1, #0
+ 8000284: bne.n 800026c <main+0x9c>
+\end{lstlisting}
+
+The loop body is 13 register-only instructions where \texttt{-O0} needed 25
+instructions with 12 memory accesses. The call overhead, the frame setup and
+every spill are gone.
+
+\subsection{Trade-off between time and code size}
+
+Inlining removes the call, the return and the argument shuffling, and it lets
+the compiler specialise each copy for its call site. The price is one copy of
+the body per call site, which is exactly the 244 extra bytes \texttt{main}
+gained between \texttt{-O1} and \texttt{-O2}. On a part with 64 kB of flash that
+cost is affordable, but the general shape holds: \texttt{-O2} buys speed with
+space, \texttt{-Os} refuses that trade and keeps a single shared copy, and
+\texttt{-O1} lands close to \texttt{-Os} in size because it does the cheap
+register allocation work without the code duplication. \texttt{-O0} is worse on
+both axes at once, because the stack traffic it emits costs cycles and bytes
+together.
+
+\subsection{Answer to the Task 3 question}
+
+Measured time at \texttt{-O0}: \bench{value} $\mu$s. At \texttt{-O2}:
+\bench{value} $\mu$s. Measured ratio: \bench{value}, against a predicted ratio
+of 3. The transformation identified in the disassembly is function inlining,
+acting on the body of \texttt{isqrt\_fast} in \texttt{Core/Src/main.c} at its
+call sites in \texttt{verify\_against\_golden},
+\texttt{measure\_single\_call} and \texttt{measure\_long\_run}.
+
+\section{Cycle-Counted Phase Delay}
+
+\subsection{Derivation of the target}
+
+The input is a 1 kHz sine, so
+
+\[
+T = \frac{1}{f} = \frac{1}{1000} = 1~\text{ms},
+\qquad
+\Delta t = \frac{45^{\circ}}{360^{\circ}} T = \frac{1}{8} \times 1~\text{ms} = 125~\mu\text{s}.
+\]
+
+At the default 8 MHz HSI one CPU cycle is 125 ns, so
+
+\[
+N_{\text{cycles}} = \frac{125~\mu\text{s}}{125~\text{ns}} = 1000~\text{cycles}.
+\]
+
+\subsection{Cycle budget}
+
+Cortex-M0 instruction costs used: \texttt{MOVS}, \texttt{SUBS} and \texttt{NOP}
+one cycle; \texttt{LDR} and \texttt{STR} two cycles; a branch three cycles when
+taken and one when it falls through.
+
+The path that must add up to 1000 cycles runs from the sample instant to the
+DAC write. The sample and hold closes about 1.5 ADC clocks after \texttt{ADSTART}
+is written, which is 3 CPU cycles with the ADC clocked from PCLK/2 at 4 MHz.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{llrrr}
+\toprule
+Instruction & Role & Cycles & Iterations & Subtotal \\
+\midrule
+\texttt{STR r4, [r0, \#ADC\_CR]} & start conversion & 2 & 1 & 2 \\
+\texttt{MOVS r2, \#250} & load delay count & 1 & 1 & 1 \\
+\texttt{SUBS r2, r2, \#1} & delay body & 1 & 250 & 250 \\
+\texttt{BNE delay\_loop} & delay branch & 3 taken, 1 final & 250 & 748 \\
+\texttt{LDR r3, [r0, \#ADC\_DR]} & read conversion & 2 & 1 & 2 \\
+\texttt{STR r3, [r1, \#DHR12R1]} & write DAC & 2 & 1 & 2 \\
+\texttt{B sample\_loop} & close the loop & 3 & 1 & 3 \\
+\bottomrule
+\end{tabular}
+\caption{Cycle budget for the sample loop. The delay loop costs $4N-2 = 998$
+cycles for $N = 250$.}
+\label{tab:cycles}
+\end{table}
+
+The sample-to-output path is
+
+\[
+1 + (4N - 2) + 2 + 2 = 4N + 3,
+\]
+
+and setting this equal to $1000 + 3$ cycles, where the extra 3 cycles account
+for the sample and hold closing after \texttt{ADSTART}, gives
+
+\[
+4N + 3 = 1003 \quad \Rightarrow \quad N = 250.
+\]
+
+One delay iteration is 4 cycles, so \texttt{DELAY\_ITERS} trims the output by
+500 ns per step when the measured phase needs adjusting.
+
+\subsection{Measurement}
+
+\bench{Figure: CH1 on PB0 and CH2 on PA4, cursors on the 125 $\mu$s difference}
+
+\begin{itemize}
+  \item Measured $\Delta t$: \bench{cursor delta}
+  \item Error relative to 125 $\mu$s: \bench{value and percentage}
+  \item \texttt{DELAY\_ITERS} finally used: \bench{value, if trimmed from 250}
+\end{itemize}
+
+Expected sources of error, to be confirmed against the measurement: the HSI is
+trimmed to roughly 1\%, which alone moves 125 $\mu$s by about 1.25 $\mu$s; the
+DAC holds each sample until the next loop pass, so the reconstructed waveform
+carries an extra delay of about half a sample period; and the ADC sample instant
+is approximated as 3 cycles after \texttt{ADSTART} rather than measured.
+
+\section{Analog Debugging of the LCD Enable Line}
+
+\subsection{Why the first attempt fails}
+
+Each of the six level shifters is an NMOS with a 1.8 k$\Omega$ pullup to 5 V.
+The 3.3 V side is driven actively low, so the falling edge on \texttt{PC15\_S}
+is fast, but the rising edge is not driven at all: the line is released and
+climbs through the pullup into whatever capacitance the trace, the transistor
+and the LCD pin present. The HD44780 treats anything above 3.5 V as a logic
+high, so the climb from 0 V to 3.5 V is dead time. An enable pulse whose high
+period is only long enough on the 3.3 V side leaves the 5 V side below threshold
+for the whole pulse, the panel never latches, and nothing appears on the screen.
+
+\bench{Figure: PC15 and PC15\_S together, 5 V side falling short of 3.5 V}
+
+\subsection{Rise time measurement}
+
+\begin{itemize}
+  \item Measured 0 V to 3.5 V rise time on \texttt{PC15\_S}: \bench{$t$ with cursors}
+\end{itemize}
+
+\subsection{Capacitance calculation}
+
+The rising edge is a first-order RC charge towards $V_{CC}$:
+
+\[
+V_C(t) = V_{CC}\left(1 - e^{-t/(RC)}\right)
+\qquad \Rightarrow \qquad
+C = \frac{-t}{R \ln\!\left(1 - \dfrac{V_C(t)}{V_{CC}}\right)}.
+\]
+
+With $R = 1800~\Omega$ from the shifter pullup, $V_{CC} = 5$ V and
+$V_C(t) = 3.5$ V,
+
+\[
+\ln\!\left(1 - \frac{3.5}{5}\right) = \ln(0.3) = -1.20397,
+\qquad
+C = \frac{t}{1800 \times 1.20397} = \frac{t}{2167.1}.
+\]
+
+Substituting the measured rise time gives $C = \bench{result}$.
+
+\subsection{NOP count derivation}
+
+The panel requires the enable pulse to stay above its logic-high threshold for
+at least 450 ns. Only the time after \texttt{PC15\_S} crosses 3.5 V counts, so
+the enable line must be held high for the rise time plus the hold requirement:
+
+\[
+n = \left\lceil \frac{t_{\text{rise}} + 450~\text{ns}}{125~\text{ns}} \right\rceil.
+\]
+
+With the measured rise time this gives $n = \bench{value}$ NOPs, set as
+\texttt{E\_HIGH\_NOPS} in \texttt{Core/Src/lcd\_asm.s}. The source currently
+carries a starting value of 8, which must be replaced by the value derived from
+the measurement above.
+
+\begin{lstlisting}
+    str     r1, [r0, #GPIO_BSRR]    @ 2  E high, PC15_S starts its RC climb
+    .rept   E_HIGH_NOPS
+    nop                             @ 1 each, holds E while the 5 V side is valid
+    .endr
+    str     r1, [r0, #GPIO_BRR]     @ 2  E low, the panel latches on this edge
+\end{lstlisting}
+
+\bench{Figure: PC15 and PC15\_S after the fix, 5 V side above 3.5 V for at
+least 450 ns with cursors}
+
+\bench{Photograph: the LCD displaying the letter A}
+
+\section*{References}
+
+\begin{itemize}
+  \item STMicroelectronics. (2017). \textit{RM0091 Reference manual: STM32F0x1/STM32F0x2/STM32F0x8 advanced ARM-based 32-bit MCUs}. Section 6, Reset and clock control. Section 13, Analog-to-digital converter. Section 14, Digital-to-analog converter. Section 18, General-purpose timers TIM2/TIM3.
+  \item STMicroelectronics. (2017). \textit{STM32F051x4 STM32F051x6 STM32F051x8 datasheet}. Pin definitions and ADC characteristics.
+  \item Hitachi. \textit{HD44780U (LCD-II) Dot Matrix Liquid Crystal Display Controller/Driver datasheet}. Bus timing characteristics, enable pulse width.
+  \item ARM. \textit{Cortex-M0 Technical Reference Manual}. Instruction set summary and cycle counts.
+  \item Gowans, J., \& Pead, J. (2025). \textit{UCT Dev Board schematic and pinout reference}, revision 1.06. University of Cape Town.
+\end{itemize}
+
+\section*{Appendix: Code}
+
+All source is in the group repository under \texttt{Practical\_1B}.
+
+\begin{itemize}
+  \item \texttt{Task1\_PC/golden.c}, the golden measure and the PC timing harness.
+  \item \texttt{Task1\_PC/verify\_fast.c}, the exhaustive check of the board
+        algorithm against the golden.
+  \item \texttt{board/Core/Src/main.c}, Tasks 2 and 3.
+  \item \texttt{board/Core/Src/phase\_delay.s}, Task 4.
+  \item \texttt{board/Core/Src/lcd\_asm.s}, Task 5.
+\end{itemize}
+
+\end{document}
