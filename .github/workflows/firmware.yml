@@ -1,0 +1,59 @@
+name: Firmware
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # one install for the whole job. splitting this across a matrix meant
+      # apt ran once per level and took longer than every compile put together
+      - name: Install the ARM toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-arm-none-eabi binutils-arm-none-eabi libnewlib-arm-none-eabi
+
+      - name: Build every optimisation level
+        working-directory: Practical_1B/board
+        run: |
+          echo '### Code size by optimisation level' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          for opt in -O0 -O1 -O2 -Os; do
+            make -j"$(nproc)" OPT=$opt BUILD_DIR=build$opt >/dev/null
+            printf '%-4s %s\n' "$opt" \
+              "$(arm-none-eabi-size build$opt/Practical_1B.elf | tail -1)" \
+              >> "$GITHUB_STEP_SUMMARY"
+          done
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build each task target
+        working-directory: Practical_1B/board
+        run: |
+          for task in 2 4 5; do
+            make -j"$(nproc)" TASK=$task BUILD_DIR=build-task$task >/dev/null
+          done
+
+      - name: Run the Task 1 golden measure
+        working-directory: Practical_1B/Task1_PC
+        run: |
+          make >/dev/null
+          {
+            echo '### Task 1 golden measure'
+            echo '```'
+            ./golden
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware
+          path: |
+            Practical_1B/board/build-task*/Practical_1B.elf
+            Practical_1B/board/build-task*/Practical_1B.bin
