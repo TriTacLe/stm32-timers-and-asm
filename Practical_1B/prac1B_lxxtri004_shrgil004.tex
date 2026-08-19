@@ -288,6 +288,11 @@ one 8.192 ms counter period.
   \item Scope pulse width on PC13: \bench{cursor delta}
 \end{itemize}
 
+Figure~\ref{fig:pulse} is that pulse. The cursor delta on the screen and the
+time worked out from the counter span above are the same measurement taken two
+different ways, so they have to agree inside the reading tolerance of the
+scope.
+
 \scopefig{task2-single-call.png}{pulse}{One call to \texttt{isqrt\_fast} at
 \texttt{-O1}. PC13 is driven low for the timed section, cursors on the falling
 and the rising edge give the pulse width.}
@@ -310,6 +315,10 @@ and the mean per call is that total divided by 200\,000, times 125 ns.
   \item Mean time per call: \bench{long\_run\_ns\_per\_call}
   \item Agreement with the single-call time: \bench{compare the two}
 \end{itemize}
+
+Figure~\ref{fig:longrun} shows the pulse train from the same run. Counting
+periods on the screen is an independent check on the wrap arithmetic, because
+it never touches the overflow counter at all.
 
 \scopefig{task2-long-run.png}{longrun}{Pulse train during the long run. The
 period between falling edges gives the call rate directly and is the
@@ -381,7 +390,10 @@ measured; timing columns are filled from the bench.}
 \end{table}
 
 Each row of Table~\ref{tab:opt} has its own screenshot, since the brief scores a
-timing value without one as zero.
+timing value without one as zero. Figure~\ref{fig:o0} is the \texttt{-O0}
+baseline, Figure~\ref{fig:o1} the \texttt{-O1} build, Figure~\ref{fig:o2} the
+\texttt{-O2} build and Figure~\ref{fig:os} the \texttt{-Os} build. The pulse
+width read off each screen is the value in the scope column of the table.
 
 \scopefig{task3-O0.png}{o0}{PC13 pulse width at \texttt{-O0}, the baseline the
 ratios are taken against.}
@@ -580,6 +592,10 @@ tied to the same 8 MHz the cycle count is derived from.
 
 \subsection{Measurement}
 
+Figure~\ref{fig:phase} carries the reading. The cursors sit on the same feature
+of both traces, a zero crossing in the same direction, so what they measure is
+the delay from sample to output and not a difference in amplitude or offset.
+
 \scopefig{task4-phase-delay.png}{phase}{CH1 on PB0 carries the 1 kHz input,
 CH2 on PA4 carries the DAC output. Cursors sit on the same feature of both
 traces so the reading is the sample-to-output delay.}
@@ -612,6 +628,10 @@ for the whole pulse, the panel never latches, and nothing appears on the screen.
 \scopefig{task5-enable-failing.png}{efail}{Enable line before the fix. PC15
 switches cleanly on the 3V3 side while PC15\_S never climbs past 3.5 V, so the
 panel sees no valid high.}
+
+Figure~\ref{fig:efail} is the failing case. PC15 switches in a few nanoseconds
+on the 3V3 side while PC15\_S is still climbing, and the panel latches nothing
+because the level it saw never counted as a high.
 
 \subsection{The initialisation subroutine}
 
@@ -719,6 +739,11 @@ the measurement above.
     .endr
     str     r1, [r0, #GPIO_BRR]     @ 2  E low, the panel latches on this edge
 \end{lstlisting}
+
+Figure~\ref{fig:efix} is the same pair of probes after the NOP count is set
+from the measured rise time, and Figure~\ref{fig:lcd} is the panel itself with
+the letter on it, which is the end to end proof that the timing is now inside
+what the controller needs.
 
 \scopefig{task5-enable-fixed.png}{efix}{Enable line after the NOP count is
 set from the measured rise time. PC15\_S now holds above 3.5 V for longer than
