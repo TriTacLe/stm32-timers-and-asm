@@ -13,6 +13,22 @@
 % can be mistaken for a result
 \newcommand{\bench}[1]{\textcolor{red}{\textbf{[BENCH: #1]}}}
 
+% figure slot for a screenshot that is not taken yet. drop the file into
+% figures/ under the name below and it appears, no edit needed
+\newcommand{\scopefig}[3]{%
+  \begin{figure}[h]
+  \centering
+  \IfFileExists{figures/#1}{%
+    \includegraphics[width=0.85\linewidth]{figures/#1}%
+  }{%
+    \fbox{\parbox[c][45mm][c]{0.85\linewidth}{\centering
+      \textcolor{red}{\textbf{[BENCH] figures/#1 not captured yet}}}}%
+  }
+  \caption{#3}
+  \label{fig:#2}
+  \end{figure}%
+}
+
 \lstset{
   basicstyle=\ttfamily\footnotesize,
   breaklines=true,
@@ -239,7 +255,7 @@ call and return plus the timer reads add a small fixed cost:
 
 \[
 16 \times 10 \approx 160~\text{cycles} \quad \Rightarrow \quad
-160 \times 125~\text{ns} = 20~\mu\text{s} \;\text{(rounded)}\; \approx 20~\mu\text{s},
+160 \times 125~\text{ns} = 20~\mu\text{s},
 \]
 
 which at 125 ns per tick is a predicted count span of about 160 ticks and a
@@ -272,7 +288,9 @@ one 8.192 ms counter period.
   \item Scope pulse width on PC13: \bench{cursor delta}
 \end{itemize}
 
-\bench{Figure: single-call pulse on PC13, cursors on the falling and rising edge}
+\scopefig{task2-single-call.png}{pulse}{One call to \texttt{isqrt\_fast} at
+\texttt{-O1}. PC13 is driven low for the timed section, cursors on the falling
+and the rising edge give the pulse width.}
 
 \subsection{Wrap-around case}
 
@@ -292,6 +310,10 @@ and the mean per call is that total divided by 200\,000, times 125 ns.
   \item Mean time per call: \bench{long\_run\_ns\_per\_call}
   \item Agreement with the single-call time: \bench{compare the two}
 \end{itemize}
+
+\scopefig{task2-long-run.png}{longrun}{Pulse train during the long run. The
+period between falling edges gives the call rate directly and is the
+cross-check on the wrap arithmetic above.}
 
 \subsection{Answer to the Task 2 question}
 
@@ -357,6 +379,19 @@ Flag & Text (bytes) & \texttt{isqrt\_fast} (bytes) & Counter time ($\mu$s) & Sco
 measured; timing columns are filled from the bench.}
 \label{tab:opt}
 \end{table}
+
+Each row of Table~\ref{tab:opt} has its own screenshot, since the brief scores a
+timing value without one as zero.
+
+\scopefig{task3-O0.png}{o0}{PC13 pulse width at \texttt{-O0}, the baseline the
+ratios are taken against.}
+
+\scopefig{task3-O1.png}{o1}{PC13 pulse width at \texttt{-O1}.}
+
+\scopefig{task3-O2.png}{o2}{PC13 pulse width at \texttt{-O2}, the build where
+\texttt{isqrt\_fast} is inlined at every call site.}
+
+\scopefig{task3-Os.png}{os}{PC13 pulse width at \texttt{-Os}.}
 
 The size column is not monotonic, and the reason is visible in the symbol
 table. At \texttt{-O1} and \texttt{-Os} the function survives as a callable
@@ -513,7 +548,9 @@ One delay iteration is 4 cycles, so \texttt{DELAY\_ITERS} trims the output by
 
 \subsection{Measurement}
 
-\bench{Figure: CH1 on PB0 and CH2 on PA4, cursors on the 125 $\mu$s difference}
+\scopefig{task4-phase-delay.png}{phase}{CH1 on PB0 carries the 1 kHz input,
+CH2 on PA4 carries the DAC output. Cursors sit on the same feature of both
+traces so the reading is the sample-to-output delay.}
 
 \begin{itemize}
   \item Measured $\Delta t$: \bench{cursor delta}
@@ -540,7 +577,9 @@ high, so the climb from 0 V to 3.5 V is dead time. An enable pulse whose high
 period is only long enough on the 3.3 V side leaves the 5 V side below threshold
 for the whole pulse, the panel never latches, and nothing appears on the screen.
 
-\bench{Figure: PC15 and PC15\_S together, 5 V side falling short of 3.5 V}
+\scopefig{task5-enable-failing.png}{efail}{Enable line before the fix. PC15
+switches cleanly on the 3V3 side while PC15\_S never climbs past 3.5 V, so the
+panel sees no valid high.}
 
 \subsection{Rise time measurement}
 
@@ -592,10 +631,12 @@ the measurement above.
     str     r1, [r0, #GPIO_BRR]     @ 2  E low, the panel latches on this edge
 \end{lstlisting}
 
-\bench{Figure: PC15 and PC15\_S after the fix, 5 V side above 3.5 V for at
-least 450 ns with cursors}
+\scopefig{task5-enable-fixed.png}{efix}{Enable line after the NOP count is
+set from the measured rise time. PC15\_S now holds above 3.5 V for longer than
+the 450 ns the HD44780 asks for.}
 
-\bench{Photograph: the LCD displaying the letter A}
+\scopefig{task5-lcd-photo.jpg}{lcd}{The panel driven by the assembly
+routine, showing the letter A at the first column of the first line.}
 
 \section*{References}
 
