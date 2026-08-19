@@ -546,6 +546,38 @@ for the sample and hold closing after \texttt{ADSTART}, gives
 One delay iteration is 4 cycles, so \texttt{DELAY\_ITERS} trims the output by
 500 ns per step when the measured phase needs adjusting.
 
+\subsection{Bench setup}
+
+The POT0 jumper is removed so nothing else drives PB0, and the signal generator
+is connected to PB0 on the 2x2 header. It is set to a 1 kHz sine, 3.0 V peak to
+peak, with a 1.5 V DC offset, which keeps the whole swing inside the 0 V to
+3.0 V window the ADC input can accept without clipping.
+
+\subsection{The timed loop}
+
+The loop below is the part the budget in Table~\ref{tab:cycles} refers to. Each
+line carries the cycle cost taken from the ARM instruction timings.
+
+\begin{lstlisting}
+    movs    r4, #ADC_CR_ADSTART     @ ADSTART lives in r4 for the whole loop
+
+sample_loop:
+    str     r4, [r0, #ADC_CR]       @ 2  start a conversion
+    movs    r2, #DELAY_ITERS        @ 1  250 passes
+delay_loop:
+    subs    r2, r2, #1              @ 1  once per pass
+    bne     delay_loop              @ 3 taken, 1 on the final pass
+    ldr     r3, [r0, #ADC_DR]       @ 2  read the result, this also clears EOC
+    str     r3, [r1, #DAC_DHR12R1]  @ 2  hand the value to the DAC
+    b       sample_loop             @ 3  round again
+\end{lstlisting}
+
+The ADC base address stays in \texttt{r0} and the DAC base in \texttt{r1} for
+the whole loop. Reloading either address inside the loop would add two cycles
+per pass that the budget does not account for, and the phase would come out
+long. The ADC is clocked from PCLK divided by two, so its conversion time is
+tied to the same 8 MHz the cycle count is derived from.
+
 \subsection{Measurement}
 
 \scopefig{task4-phase-delay.png}{phase}{CH1 on PB0 carries the 1 kHz input,
@@ -580,6 +612,63 @@ for the whole pulse, the panel never latches, and nothing appears on the screen.
 \scopefig{task5-enable-failing.png}{efail}{Enable line before the fix. PC15
 switches cleanly on the 3V3 side while PC15\_S never climbs past 3.5 V, so the
 panel sees no valid high.}
+
+\subsection{The initialisation subroutine}
+
+Read and write is tied low on the board, so the panel cannot be polled and
+every wait is a counted delay taken from the HD44780 timing table. The three
+nibbles of \texttt{0x3} put the controller into a known 8-bit state whatever it
+powered up in, and \texttt{0x2} is what moves it to 4-bit mode.
+
+\begin{lstlisting}
+lcd_init_asm:
+    push    {r4, lr}
+    bl      lcd_pins_init
+    movs    r0, #50                 @ the panel needs more than 40 ms after power on
+    bl      delay_ms
+
+    movs    r0, #3                  @ first of three, still in 8-bit mode
+    bl      lcd_put_nibble
+    bl      lcd_pulse_e
+    movs    r0, #5
+    bl      delay_ms
+    @ two further 0x3 nibbles follow, each with its own wait
+
+    movs    r0, #2                  @ switch the bus to 4-bit
+    bl      lcd_put_nibble
+    bl      lcd_pulse_e
+    movs    r0, #1
+    bl      delay_ms
+
+    movs    r0, #0x28               @ 4-bit bus, two lines, 5 by 8 font
+    movs    r1, #0
+    bl      lcd_write
+    movs    r0, #0x08               @ display off while it is set up
+    movs    r1, #0
+    bl      lcd_write
+    movs    r0, #0x01               @ clear
+    movs    r1, #0
+    bl      lcd_write
+    movs    r0, #2                  @ clearing takes 1.52 ms
+    bl      delay_ms
+    movs    r0, #0x06               @ cursor moves right, display stays put
+    movs    r1, #0
+    bl      lcd_write
+    movs    r0, #0x0C               @ display on, cursor hidden
+    movs    r1, #0
+    bl      lcd_write
+    pop     {r4, pc}
+
+lcd_show_A:
+    push    {r4, lr}
+    movs    r0, #0x80               @ address 0, the top left cell
+    movs    r1, #0
+    bl      lcd_write
+    movs    r0, #0x41               @ the character code for A
+    movs    r1, #1
+    bl      lcd_write
+    pop     {r4, pc}
+\end{lstlisting}
 
 \subsection{Rise time measurement}
 
@@ -650,15 +739,23 @@ routine, showing the letter A at the first column of the first line.}
 
 \section*{Appendix: Code}
 
-All source is in the group repository under \texttt{Practical\_1B}.
+All source is in the group repository under \texttt{Practical\_1B}. The
+listings below are pulled straight from those files when the report is built,
+so what is printed here is what was compiled and run.
 
-\begin{itemize}
-  \item \texttt{Task1\_PC/golden.c}, the golden measure and the PC timing harness.
-  \item \texttt{Task1\_PC/verify\_fast.c}, the exhaustive check of the board
-        algorithm against the golden.
-  \item \texttt{board/Core/Src/main.c}, Tasks 2 and 3.
-  \item \texttt{board/Core/Src/phase\_delay.s}, Task 4.
-  \item \texttt{board/Core/Src/lcd\_asm.s}, Task 5.
-\end{itemize}
+\subsection*{\texttt{Task1\_PC/golden.c}, Task 1}
+\lstinputlisting[language=C]{Task1_PC/golden.c}
+
+\subsection*{\texttt{Task1\_PC/verify\_fast.c}, the cross check}
+\lstinputlisting[language=C]{Task1_PC/verify_fast.c}
+
+\subsection*{\texttt{board/Core/Src/main.c}, Tasks 2 and 3}
+\lstinputlisting[language=C]{board/Core/Src/main.c}
+
+\subsection*{\texttt{board/Core/Src/phase\_delay.s}, Task 4}
+\lstinputlisting{board/Core/Src/phase_delay.s}
+
+\subsection*{\texttt{board/Core/Src/lcd\_asm.s}, Task 5}
+\lstinputlisting{board/Core/Src/lcd_asm.s}
 
 \end{document}
