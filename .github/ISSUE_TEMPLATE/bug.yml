@@ -1,0 +1,30 @@
+name: Bug
+description: Something in the firmware, the host code or the build behaves wrongly
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happens
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What should happen
+    validations:
+      required: true
+  - type: input
+    id: build
+    attributes:
+      label: Build it shows up in
+      placeholder: make TASK=4 OPT=-O0, debugger attached
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: Steps, and the pin or register to watch if it matters
+    validations:
+      required: true

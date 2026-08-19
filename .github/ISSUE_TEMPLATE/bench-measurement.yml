@@ -1,0 +1,55 @@
+name: Bench measurement
+description: A number the report needs that can only come off the board or the scope
+labels: ["measurement", "blocked: lab"]
+body:
+  - type: input
+    id: task
+    attributes:
+      label: Task
+      description: Which task of the practical the measurement belongs to
+      placeholder: Task 3
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What has to be measured
+      description: The quantity, and where it lands in the report
+      placeholder: Execution time of one isqrt_fast call at -O2, fills the third row of the optimisation table
+    validations:
+      required: true
+  - type: input
+    id: build
+    attributes:
+      label: Build under test
+      description: The exact make line, including TASK and the optimisation level
+      placeholder: make TASK=2 OPT=-O2
+    validations:
+      required: true
+  - type: textarea
+    id: setup
+    attributes:
+      label: Bench setup
+      description: Probe points, trigger, signal generator settings, jumpers moved
+      placeholder: Probe on PC13, falling edge trigger, POT0 jumper removed
+    validations:
+      required: true
+  - type: input
+    id: screenshot
+    attributes:
+      label: Screenshot filename
+      description: The name the capture has to be saved under so the report picks it up
+      placeholder: Practical_1B/figures/task3-O2.png
+    validations:
+      required: true
+  - type: checkboxes
+    id: rules
+    attributes:
+      label: Before closing
+      options:
+        - label: The number is measured, not estimated
+          required: true
+        - label: The screenshot is committed and the figure resolves in the built PDF
+          required: true
+        - label: The matching bench macro is gone from the tex
+          required: true
