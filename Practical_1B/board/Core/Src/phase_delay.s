@@ -1,36 +1,45 @@
 /*
  * Practical 1B, Task 4
- * ADC on PB0 (channel 8) copied to DAC1 on PA4, with a cycle counted delay
- * that puts the output 45 degrees behind a 1 kHz input.
  *
- * Clock assumptions: HSI 8 MHz, no PLL, so one CPU cycle is 125 ns.
- * The ADC runs from PCLK/2 = 4 MHz (CFGR2 CKMODE = 01) so the conversion
- * time is fixed to the same clock the cycle count is derived from.
+ * What this file does. It reads the ADC on PB0 over and over and writes each
+ * sample straight to DAC1 on PA4, with a delay in the loop sized so the output
+ * comes out a quarter of a period late. At 1 kHz that quarter turn is 45
+ * degrees, which is what the practical asks for.
  *
- *   T     = 1 / 1000 Hz            = 1 ms
- *   dt    = (45 / 360) * 1 ms      = 125 us
- *   cycles = 125 us / 125 ns       = 1000 cycles
+ * The clock is the 8 MHz internal RC oscillator with no PLL, so one CPU cycle
+ * lasts 125 ns. Every count in this file comes back to that number.
  *
- * Cortex-M0 cycle costs used below (ARMv6-M):
- *   MOVS/SUBS/NOP  1
- *   LDR/STR        2
- *   B / BNE        3 when taken, 1 when it falls through
+ * The ADC is deliberately clocked from PCLK divided by two, which is 4 MHz,
+ * set through CKMODE in CFGR2. That ties the conversion time to the same clock
+ * the cycle counting uses. Left on the default asynchronous clock it would run
+ * from a separate oscillator and the delay would drift against it.
  *
- * Budget from the sample instant to the DAC write:
- *   the sample and hold closes about 1.5 ADC clocks (3 CPU cycles) after
- *   ADSTART is written, so the path that has to add up to 1000 cycles is
+ * Working out the target
+ *   the input period is one over one thousand, which is 1 ms
+ *   45 degrees is an eighth of a turn, so the delay is 125 us
+ *   at 125 ns per cycle that is 1000 cycles
+ *
+ * Cycle costs on the Cortex M0, from the ARM technical reference manual
+ *   MOVS, SUBS and NOP take one cycle
+ *   LDR and STR take two
+ *   a branch takes three when it is taken and one when it falls through
+ *
+ * Where the 1000 cycles go. The sample and hold closes about one and a half
+ * ADC clocks after ADSTART is written, which is 3 CPU cycles, so the clock
+ * really starts a little after the write. From there to the DAC write the path
+ * costs
  *
  *     MOVS  r2, #DELAY_ITERS        1
- *     delay loop, N iterations      4N - 2      (4 per pass, last pass 2)
+ *     the delay loop, N passes      4N minus 2
  *     LDR   r3, [ADC, #DR]          2
  *     STR   r3, [DAC, #DHR12R1]     2
- *                                  ----
- *     total                         4N + 3
  *
- *   4N + 3 = 1000 + 3  ->  N = 250
+ * which adds up to 4N plus 3. Setting that equal to 1000 plus the 3 cycles the
+ * sample and hold costs gives 4N plus 3 equal to 1003, so N is 250.
  *
- * One delay iteration is 4 cycles, so DELAY_ITERS moves the output by 500 ns
- * per step when the measured phase needs trimming at the bench.
+ * Each pass of the delay loop is four cycles, which is 500 ns. So one step of
+ * DELAY_ITERS moves the output by 500 ns if the measured phase needs nudging
+ * at the bench.
  */
 
 @ ---
@@ -38,6 +47,8 @@
     .cpu cortex-m0
     .thumb
 
+    @ Peripheral addresses, taken from the memory map in RM0091. Writing them
+    @ out here keeps the code below free of magic numbers.
     .equ RCC_BASE,      0x40021000
     .equ RCC_AHBENR,    0x14
     .equ RCC_APB1ENR,   0x1C
@@ -65,7 +76,7 @@
     .equ ADC_CR_ADCAL,  0x80000000
     .equ ADC_ISR_ADRDY, 0x00000001
 
-    .equ DELAY_ITERS,   250          @ derived above, 4 cycles each
+    .equ DELAY_ITERS,   250          @ from the derivation above, 4 cycles each
 
     .global phase_delay_run
     .type phase_delay_run, %function
@@ -73,34 +84,39 @@
 phase_delay_run:
     push    {r4, r5, lr}
 
-    @ GPIOA and GPIOB clocks
+    @ Turn on the clocks for both GPIO ports. Bit 17 is port A and bit 18 is
+    @ port B, so 0x60000 covers the pair.
     ldr     r0, =RCC_BASE
     ldr     r1, [r0, #RCC_AHBENR]
-    ldr     r2, =0x00060000         @ GPIOAEN bit 17, GPIOBEN bit 18
+    ldr     r2, =0x00060000
     orrs    r1, r1, r2
     str     r1, [r0, #RCC_AHBENR]
 
-    @ ADC clock on APB2, DAC clock on APB1
+    @ The ADC sits on APB2 and the DAC sits on APB1, so they are enabled in
+    @ two different registers.
     ldr     r1, [r0, #RCC_APB2ENR]
     movs    r2, #1
-    lsls    r2, r2, #9              @ ADCEN
+    lsls    r2, r2, #9              @ bit 9 is ADCEN
     orrs    r1, r1, r2
     str     r1, [r0, #RCC_APB2ENR]
 
     ldr     r1, [r0, #RCC_APB1ENR]
     movs    r2, #1
-    lsls    r2, r2, #29             @ DACEN
+    lsls    r2, r2, #29             @ bit 29 is DACEN
     orrs    r1, r1, r2
     str     r1, [r0, #RCC_APB1ENR]
 
-    @ PA4 analog mode, MODER bits 9:8 set to 11
+    @ PA4 has to be in analog mode before the DAC can drive it. Its MODER
+    @ field is bits 9 and 8, and analog is both bits set.
     ldr     r0, =GPIOA_BASE
     ldr     r1, [r0, #GPIO_MODER]
     ldr     r2, =0x00000300
     orrs    r1, r1, r2
     str     r1, [r0, #GPIO_MODER]
 
-    @ PB0 analog mode, MODER bits 1:0 set to 11
+    @ Same for PB0, which is the ADC input. Its field is the bottom two bits.
+    @ Leaving the pin as a digital input would clamp the signal and load the
+    @ source with the input protection.
     ldr     r0, =GPIOB_BASE
     ldr     r1, [r0, #GPIO_MODER]
     movs    r2, #3
@@ -109,27 +125,39 @@ phase_delay_run:
 
     ldr     r0, =ADC1_BASE
 
-    @ ADC clock source PCLK/2 so conversion time follows the system clock
-    ldr     r1, =0x40000000         @ CKMODE = 01
+    @ Clock the ADC from PCLK divided by two. CKMODE is the top two bits of
+    @ CFGR2 and 01 selects that mode.
+    ldr     r1, =0x40000000
     str     r1, [r0, #ADC_CFGR2]
 
-    @ calibrate while the ADC is still disabled
+    @ Calibration only works while the ADC is still disabled, so it happens
+    @ before ADEN is ever set. Skipping it leaves an offset error on every
+    @ conversion, which shows up as the output sitting off the input.
     ldr     r1, =ADC_CR_ADCAL
     str     r1, [r0, #ADC_CR]
 1:  ldr     r1, [r0, #ADC_CR]
     ldr     r2, =ADC_CR_ADCAL
     tst     r1, r2
-    bne     1b                      @ ADCAL clears when calibration ends
+    bne     1b                      @ the hardware clears ADCAL when it is done
 
-    @ single conversion, 12 bit, right aligned, shortest sampling time
+    @ All zeros in CFGR1 means single conversion, twelve bits, right aligned,
+    @ no trigger and no continuous mode, which is exactly what the loop wants
+    @ because it starts each conversion itself.
     movs    r1, #0
     str     r1, [r0, #ADC_CFGR1]
-    str     r1, [r0, #ADC_SMPR]     @ 1.5 ADC clocks
 
+    @ Shortest sampling time the ADC offers, one and a half clocks. The source
+    @ is a signal generator with a low output impedance so there is no reason
+    @ to hold the sampling switch closed any longer.
+    str     r1, [r0, #ADC_SMPR]
+
+    @ PB0 is channel 8, so bit 8 of CHSELR.
     movs    r1, #1
-    lsls    r1, r1, #8              @ channel 8 is PB0
+    lsls    r1, r1, #8
     str     r1, [r0, #ADC_CHSELR]
 
+    @ Enable the ADC and wait for it to say it is ready. Starting a conversion
+    @ before ADRDY comes up gives a garbage first sample.
     movs    r1, #ADC_CR_ADEN
     str     r1, [r0, #ADC_CR]
 2:  ldr     r1, [r0, #ADC_ISR]
@@ -137,23 +165,26 @@ phase_delay_run:
     tst     r1, r2
     beq     2b
 
-    @ DAC channel 1 on, output buffer enabled, no external trigger
+    @ Enable DAC channel 1 with its output buffer on and no external trigger,
+    @ so a write to the data register reaches the pin by itself.
     ldr     r1, =DAC_BASE
     movs    r2, #1
     str     r2, [r1, #DAC_CR]
 
-    @ r0 holds the ADC base and r1 the DAC base for the whole timed loop
+    @ From here on r0 holds the ADC base and r1 holds the DAC base. Keeping
+    @ both in registers means the timed loop never has to reload an address,
+    @ which would add cycles the budget does not account for.
     movs    r4, #ADC_CR_ADSTART
 
 sample_loop:
-    str     r4, [r0, #ADC_CR]       @ 2  start one conversion, sample closes ~3 cycles later
-    movs    r2, #DELAY_ITERS        @ 1
+    str     r4, [r0, #ADC_CR]       @ 2  start a conversion, sample closes about 3 cycles later
+    movs    r2, #DELAY_ITERS        @ 1  load the pass count
 delay_loop:
-    subs    r2, r2, #1              @ 1  x N
-    bne     delay_loop              @ 3 taken, 1 on the last pass
-    ldr     r3, [r0, #ADC_DR]       @ 2  conversion long finished, reading clears EOC
-    str     r3, [r1, #DAC_DHR12R1]  @ 2  DHR to DOR takes one APB1 clock, no trigger needed
-    b       sample_loop             @ 3
+    subs    r2, r2, #1              @ 1  once per pass
+    bne     delay_loop              @ 3 when taken, 1 on the final pass
+    ldr     r3, [r0, #ADC_DR]       @ 2  conversion finished long ago, this read also clears EOC
+    str     r3, [r1, #DAC_DHR12R1]  @ 2  the value reaches the pin one APB1 clock later
+    b       sample_loop             @ 3  round again
 
     .size phase_delay_run, .-phase_delay_run
 @ ---
