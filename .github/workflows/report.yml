@@ -3,8 +3,20 @@ name: Report
 on:
   push:
     branches: [main]
+    paths:
+      - 'Practical_1B/**.tex'
+      - 'Practical_1B/figures/**'
+      - 'Practical_1B/**.c'
+      - 'Practical_1B/**.s'
+      - '.github/workflows/report.yml'
   pull_request:
     branches: [main]
+    paths:
+      - 'Practical_1B/**.tex'
+      - 'Practical_1B/figures/**'
+      - 'Practical_1B/**.c'
+      - 'Practical_1B/**.s'
+      - '.github/workflows/report.yml'
 
 # the jobs only build, nothing writes back to the repo
 permissions:
