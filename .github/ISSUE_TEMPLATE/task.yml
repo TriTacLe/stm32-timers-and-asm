@@ -1,0 +1,17 @@
+name: Task
+description: Work to do that is not a bug and not a measurement
+labels: ["housekeeping"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What needs doing and why
+      description: A short paragraph. What is missing, what it costs us, what the smallest fix is
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: How we know it is done
+    validations:
+      required: true
