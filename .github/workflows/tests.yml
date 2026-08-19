@@ -1,0 +1,42 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Practical_1B/Task1_PC/**'
+      - 'Practical_1B/board/Core/Src/main.c'
+      - '.github/workflows/tests.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'Practical_1B/Task1_PC/**'
+      - 'Practical_1B/board/Core/Src/main.c'
+      - '.github/workflows/tests.yml'
+
+# nothing here writes back to the repo
+permissions:
+  contents: read
+
+jobs:
+  host-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # gcc and python are already on the runner image, so there is nothing
+      # to install
+      - name: Run the host checks
+        working-directory: Practical_1B/Task1_PC
+        run: |
+          make test | tee result.txt
+
+      - name: Summary
+        working-directory: Practical_1B/Task1_PC
+        run: |
+          {
+            echo "### Host checks"
+            echo '```'
+            cat result.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
