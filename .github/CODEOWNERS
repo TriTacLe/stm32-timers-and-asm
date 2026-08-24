@@ -1,0 +1,7 @@
+# both partners own the whole repo, so each pull request asks the other for a review
+*       @TriTacLe @Gil-Sharon-2005
+
+# the reports are the graded artefacts, called out separately so a change to one
+# is obvious in the review request
+Practical_1A/*.tex      @TriTacLe @Gil-Sharon-2005
+Practical_1B/*.tex      @TriTacLe @Gil-Sharon-2005
