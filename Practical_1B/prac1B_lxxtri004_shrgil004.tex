@@ -74,24 +74,25 @@ rather than correct by assumption.
 \subsection{Prediction before timing}
 
 The prediction was made from an instruction count estimate before the timing
-run. One call performs a single \texttt{sqrtsd}, one conversion back to
-integer, and two multiply-and-compare pairs for the clamps, of which neither
-loop body executes in the common case. That is roughly 10 to 12 instructions,
-dominated by \texttt{sqrtsd}, which on this Skylake-derived core has a latency
-near 15 to 18 cycles. Treating the call as latency bound at the 2.60 GHz base
-clock gives
+run. The host is an Apple MacBook Air (MacBookAir10,1) with an Apple M1, four
+performance cores and four efficiency cores. A performance core runs at about
+3.2 GHz, so one clock cycle is about 0.3125 ns.
+
+One call performs a single hardware double-precision square root, one
+conversion back to integer, and two multiply-and-compare pairs for the clamps,
+of which neither loop body executes in the common case. Taking an effective
+cost of about 10 cycles per call gives
 
 \[
-t_{\text{pred}} \approx \frac{18~\text{cycles}}{2.60 \times 10^{9}~\text{Hz}}
-\approx 7~\text{ns per call}.
+t_{\text{pred}} \approx 10 \times \frac{1}{3.2 \times 10^{9}~\text{Hz}}
+= 10 \times 0.3125~\text{ns} \approx 3.1~\text{ns per call}.
 \]
 
-The prediction is therefore about 7 ns per call, and the reasoning above is the
-basis for it.
+The prediction is therefore about 3.1 ns per call, and the reasoning above is
+the basis for it.
 
 \subsection{Measured results}
 
-The host is an Intel Core i7-10750H, 2.60 GHz base and 5.00 GHz maximum turbo.
 Timing used \texttt{clock\_gettime(CLOCK\_MONOTONIC, \ldots)} around a loop
 whose input changes on every iteration, with the result stored to a
 \texttt{volatile} sink so the optimiser cannot delete the work. The program was
@@ -103,28 +104,34 @@ built with \texttt{gcc -O2 -std=gnu11}.
 \toprule
 Run & Repetitions & Time per call (ns) \\
 \midrule
-A & 1\,000\,000 & 1.617 \\
-B & 10\,000\,000 & 1.639 \\
+A & 1\,000\,000 & 2.959 \\
+B & 10\,000\,000 & 2.517 \\
 \midrule
-\multicolumn{2}{l}{Mean} & 1.628 \\
-\multicolumn{2}{l}{Spread} & 0.022 (1.33\% of mean) \\
+\multicolumn{2}{l}{Mean} & 2.738 \\
+\multicolumn{2}{l}{Spread} & 0.442 (16.15\% of mean) \\
 \bottomrule
 \end{tabular}
 \caption{Golden measure timing on the PC, two repetition counts.}
 \label{tab:pc-timing}
 \end{table}
 
-The time per call holds to within 1.33\% across a tenfold change in repetition
-count, so the measurement is stable.
+The two runs differ by 0.442 ns, which is 16.15\% of the mean. That spread is
+wide enough to be worth explaining rather than ignoring. The shorter run of
+1\,000\,000 repetitions finishes in a few milliseconds, so a larger fraction of
+it is spent with a cold instruction cache and with the core still ramping its
+clock from idle. The 10\,000\,000 repetition run spends most of its time at a
+settled sustained clock, and it came out faster for that reason. On this part
+the scheduler can also move the thread between a performance core and an
+efficiency core, which changes the effective clock mid-run. The longer run is
+therefore the more trustworthy of the two, and the mean is quoted only because
+the brief asks for both.
 
-The measured 1.628 ns is roughly four times faster than the 7 ns predicted. The
-prediction treated the call as latency bound, but \texttt{sqrtsd} is pipelined
-and the loop iterations are independent of one another, so several calls are in
-flight at once and the throughput cost rather than the latency cost is what the
-loop pays. The core also runs well above its 2.60 GHz base clock under this
-load. Both effects push the measured value below the prediction, and the
-prediction was wrong in a way that is itself informative: it named latency where
-throughput governs.
+The mean of 2.738 ns sits close below the 3.1 ns predicted. The prediction
+assumed roughly 10 cycles of work per call at 3.2 GHz. The measurement coming
+in slightly under that says the square root is pipelined and the loop
+iterations are independent of one another, so more than one call is in flight
+at a time and the loop pays the throughput cost rather than the full latency
+cost of each call.
 
 \subsection{Output table for the ten inputs}
 
@@ -223,7 +230,30 @@ compiled into flash and compared at start-up. The green LED on PB11 lights when
 all ten match and the red LED on PB10 lights on any failure, so the pass or
 fail state is visible before any timing number is read.
 
-Observed result: \bench{state whether the green LED lit, and photograph it}.
+Observed result: the PB1 LED lit and the PB0 LED stayed dark, so all ten golden
+values matched. The debugger confirms it directly, with
+\texttt{verify\_failures} reading 0. Both indicators are on the same red LED bank
+D0 to D7 that the board wires to PB0 through PB7, so they are distinguished by
+position rather than by colour.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.55\linewidth]{figures/task2-board-leds.png}
+\caption{The board after the golden check. The LED on PB1 is lit and the LED on
+PB0 is dark, which is the pass indication. The LCD still shows the uninitialised
+block pattern, since this image is the Tasks 2 and 3 build.}
+\label{fig:leds}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.95\linewidth]{figures/task2-debugger.png}
+\caption{Debugger expression view after the run. \texttt{verify\_failures} is 0,
+\texttt{single\_call\_span} is 257 ticks, \texttt{single\_call\_ns} is 32\,125 ns,
+\texttt{long\_run\_overflows} is 832, \texttt{long\_run\_ticks} is 54\,547\,213 and
+\texttt{long\_run\_ns\_per\_call} is 34\,092 ns.}
+\label{fig:debugger}
+\end{figure}
 
 \subsection{Clock path}
 
@@ -247,20 +277,21 @@ timers TIM2 and TIM3) for CNT, PSC, ARR and the update flag UIF.
 
 \subsection{Prediction before running}
 
-The \texttt{-O1} build compiles \texttt{isqrt\_fast} to 42 bytes of Thumb code,
-a loop of sixteen passes. Counting the loop body from the disassembly in
-Section~3, each pass is six or seven single-cycle data operations plus a taken
-branch, which on the M0 costs three cycles, so roughly ten cycles per pass. The
-call and return plus the timer reads add a small fixed cost:
+The firmware for this task was built at \texttt{-Og}, which applies
+optimisation while keeping the code debuggable. \texttt{isqrt\_fast} runs a
+loop of exactly sixteen passes. Each pass was estimated at about fifteen clock
+cycles for the shifts, the logical operation, the comparison, the conditional
+arithmetic and the loop control, giving
 
 \[
-16 \times 10 \approx 160~\text{cycles} \quad \Rightarrow \quad
-160 \times 125~\text{ns} = 20~\mu\text{s},
+16 \times 15 \approx 240~\text{cycles}.
 \]
 
-which at 125 ns per tick is a predicted count span of about 160 ticks and a
-predicted time of about 20 $\mu$s. \bench{write this prediction down before the
-first run and record any change to it}
+A further ten cycles were allowed for function entry, initialisation and
+return, for a predicted total of about 250 cycles. The CPU and the TIM3 counter
+both run at 8 MHz, so one CPU cycle and one timer count are each 0.125 $\mu$s.
+The prediction was therefore a count span of about 250 ticks and an execution
+time of about 31.25 $\mu$s.
 
 \subsection{Measurement}
 
@@ -283,9 +314,11 @@ subtraction still returns the true span, because the span is far shorter than
 one 8.192 ms counter period.
 
 \begin{itemize}
-  \item Measured count span for one call: \bench{value from single\_call\_span}
-  \item Time from the span: \bench{span} $\times$ 125 ns = \bench{result} $\mu$s
-  \item Scope pulse width on PC13: \bench{cursor delta}
+  \item Input used for the single-call measurement: 987\,654\,321
+  \item Measured count span for one call: 257 ticks
+  \item Time from the span: $257 \times 125$ ns = 32.125 $\mu$s
+  \item Scope pulse width on PC13: 32.800 $\mu$s
+  \item Difference: $32.800 - 32.125 = 0.675$ $\mu$s, or 2.10\%
 \end{itemize}
 
 Figure~\ref{fig:pulse} is that pulse. The cursor delta on the screen and the
@@ -294,7 +327,7 @@ different ways, so they have to agree inside the reading tolerance of the
 scope.
 
 \scopefig{task2-single-call.png}{pulse}{One call to \texttt{isqrt\_fast} at
-\texttt{-O1}. PC13 is driven low for the timed section, cursors on the falling
+\texttt{-Og}. PC13 is driven low for the timed section, cursors on the falling
 and the rising edge give the pulse width.}
 
 \subsection{Wrap-around case}
@@ -310,33 +343,63 @@ update flag is polled inside the loop and counted, so the total is
 and the mean per call is that total divided by 200\,000, times 125 ns.
 
 \begin{itemize}
-  \item Overflows counted: \bench{long\_run\_overflows}
-  \item Total ticks: \bench{long\_run\_ticks}
-  \item Mean time per call: \bench{long\_run\_ns\_per\_call}
-  \item Agreement with the single-call time: \bench{compare the two}
+  \item Overflows counted: 832
+  \item Residual span after the last wrap: 21\,261 ticks
+  \item Total ticks: $832 \times 65\,536 + 21\,261 = 54\,525\,952 + 21\,261
+        = 54\,547\,213$
+  \item Total time: $54\,547\,213 \times 0.125$ $\mu$s $= 6\,818\,401.625$ $\mu$s
+  \item Mean time per call: $6\,818\,401.625 / 200\,000 = 34.092$ $\mu$s
 \end{itemize}
 
-Figure~\ref{fig:longrun} shows the pulse train from the same run. Counting
-periods on the screen is an independent check on the wrap arithmetic, because
-it never touches the overflow counter at all.
+The long-run mean of 34.092 $\mu$s is 1.967 $\mu$s higher than the 32.125 $\mu$s
+measured for a single call, a difference of 6.1\%. The two numbers are not
+measuring quite the same thing. The single-call span covers only the call
+itself, between two adjacent reads of the counter. The long-run mean divides the
+whole loop by the call count, so it also carries the per-iteration loop control,
+the poll of the update flag that counts the overflows, and the update of the
+input value. Those costs sit outside the single-call window and inside the long
+run, which is the expected direction and roughly the expected size for a handful
+of extra instructions per iteration.
 
-\scopefig{task2-long-run.png}{longrun}{Pulse train during the long run. The
-period between falling edges gives the call rate directly and is the
-cross-check on the wrap arithmetic above.}
+\begin{itemize}
+  \item Agreement with the single-call time: consistent once the per-iteration
+        loop overhead described above is accounted for
+\end{itemize}
+
+The long-run figures above are read from the debugger in
+Figure~\ref{fig:debugger}. A scope capture of the pulse train would give an
+independent check on the wrap arithmetic, because counting periods on the screen
+never touches the overflow counter at all.
+\bench{capture the pulse train during the long run if bench time allows, it is
+not one of the eight required screenshots}
 
 \subsection{Answer to the Task 2 question}
 
-Scope pulse width for one call: \bench{value} $\mu$s, count span
-\bench{value} ticks. The calculation from the divider values is
+Scope pulse width for one call: 32.800 $\mu$s, count span 257 ticks. The
+calculation from the divider values is
+
+\[
+\text{SYSCLK} = f_{\text{HSI}} = 8~\text{MHz}, \quad
+\text{HCLK} = \frac{8~\text{MHz}}{1} = 8~\text{MHz}, \quad
+\text{PCLK1} = \frac{8~\text{MHz}}{1} = 8~\text{MHz},
+\]
+
+so the TIM3 counter clock is 8 MHz. With PSC = 0 the timer division factor is 1,
+one count lasts $1 / (8 \times 10^{6}) = 0.125$ $\mu$s, and
 
 \[
 t = \frac{\text{span} \times (\text{PSC}+1)}{f_{\text{HSI}}}
-  = \frac{\bench{span} \times 1}{8 \times 10^{6}}.
+  = \frac{257 \times 1}{8 \times 10^{6}} = 32.125~\mu\text{s}.
 \]
 
-Whether the system clock matches the 8 MHz HSI: \bench{state the result and how
-it was confirmed, for example by comparing the counter-derived time against the
-scope pulse, or by timing a known number of counter periods against the scope}.
+Whether the system clock matches the 8 MHz HSI: it does. The counter-derived
+32.125 $\mu$s and the scope pulse width of 32.800 $\mu$s differ by 0.675 $\mu$s,
+which is 2.10\% of the counter figure. Because PSC is 0 and both the AHB and
+APB1 dividers are 1, one timer count is exactly one CPU cycle, so the counter
+time can only land on the scope reading if the clock really is 8 MHz. A
+systematic error in the clock frequency would show up as a proportional gap
+between the two, and 2.10\% is within the combined tolerance of the HSI factory
+trim and the cursor placement.
 In Practical 1A the same board produced a 2.0038 s period where 2 s was
 expected, a 0.19\% error consistent with the HSI factory trim tolerance of about
 1\%, so a difference of this order is expected here as well.
@@ -367,7 +430,7 @@ on each use, so the loop body is dominated by \texttt{ldr} and \texttt{str}
 pairs which cost two cycles each. Optimised code keeps the same variables in
 registers. Counting the two disassemblies gives roughly 25 memory-touching
 instructions per pass at \texttt{-O0} against about 8 register operations at
-\texttt{-O1} and above, so a ratio of about \textbf{3} between the \texttt{-O0}
+\texttt{-O1} and above, so a ratio of about \textbf{2} between the \texttt{-O0}
 time and the \texttt{-O2} time was predicted.
 
 \subsection{Results}
@@ -376,16 +439,16 @@ time and the \texttt{-O2} time was predicted.
 \centering
 \begin{tabular}{lrrrrr}
 \toprule
-Flag & Text (bytes) & \texttt{isqrt\_fast} (bytes) & Counter time ($\mu$s) & Scope width ($\mu$s) & Ratio to -O0 \\
+Flag & Text (bytes) & Count span & Counter time ($\mu$s) & Scope width ($\mu$s) & Ratio to -O0 \\
 \midrule
--O0 & 1964 & 94 & \bench{} & \bench{} & 1.00 \\
--O1 & 1532 & 42 & \bench{} & \bench{} & \bench{} \\
--O2 & 1672 & inlined & \bench{} & \bench{} & \bench{} \\
--Os & 1540 & 38 & \bench{} & \bench{} & \bench{} \\
+-O0 & 2080 & 753 & 94.125 & 96.000 & 1.000 \\
+-O1 & 1672 & 256 & 32.000 & 33.000 & 2.941 \\
+-O2 & 1848 & 246 & 30.750 & 32.200 & 3.061 \\
+-Os & 1700 & 259 & 32.375 & 33.200 & 2.907 \\
 \bottomrule
 \end{tabular}
-\caption{Optimisation level against code size and execution time. Text sizes are
-measured; timing columns are filled from the bench.}
+\caption{Optimisation level against code size and execution time. Ratios are
+taken on the counter time against the \texttt{-O0} row.}
 \label{tab:opt}
 \end{table}
 
@@ -405,16 +468,17 @@ ratios are taken against.}
 
 \scopefig{task3-Os.png}{os}{PC13 pulse width at \texttt{-Os}.}
 
-The size column is not monotonic, and the reason is visible in the symbol
-table. At \texttt{-O1} and \texttt{-Os} the function survives as a callable
-symbol. At \texttt{-O2} the symbol \texttt{isqrt\_fast} disappears entirely and
-\texttt{main} grows from 420 bytes to 664 bytes, because the compiler inlined
-the body at each of the five call sites. That is why \texttt{-O2} produces a
-larger image than \texttt{-O1} despite being the more aggressive level.
-\texttt{-Os} takes a middle path: it keeps one shared copy of the function and
-produces a constant-propagated clone
-\texttt{measure\_single\_call.constprop.0} for the call site whose argument is a
-compile-time constant.
+The size column is not monotonic. At \texttt{-O1} and \texttt{-Os} the function
+survives as a callable symbol and there is one copy of its body in the image. At
+\texttt{-O2} there is no \texttt{bl} to \texttt{isqrt\_fast} at the call site
+at all, because the compiler inlined the body into each caller, so the body is
+duplicated once per call site. That is why \texttt{-O2} produces an image 176
+bytes larger than \texttt{-O1} despite being the more aggressive level.
+\texttt{-Os} sits between the two: it declines the transformations that trade
+size for speed, and it came out 28 bytes larger and 0.375 $\mu$s slower than
+\texttt{-O1} on this program. Optimising for size does not guarantee the
+smallest image for every individual program, because each level enables a
+different combination of transformations.
 
 \subsection{Disassembly at -O2 and the transformation identified}
 
@@ -426,71 +490,94 @@ acts on are the body of \texttt{isqrt\_fast} in
 \texttt{measure\_single\_call} and the loop inside \texttt{measure\_long\_run}.
 
 At \texttt{-O0} the routine is a separate function whose locals all live on the
-stack:
+stack, reached through a \texttt{bl} at each call site.
+\bench{paste the -O0 disassembly of isqrt\_fast from the same build the table
+was measured on, so the addresses match}
+
+At \texttt{-O2} there is no such symbol. The loop appears inline in the caller,
+with every value held in a register and no stack traffic at all:
 
 \begin{lstlisting}
-08000308 <isqrt_fast>:
- 8000308: push  {r7, lr}
- 800030a: sub   sp, #24
- 800030c: add   r7, sp, #0
- 800030e: str   r0, [r7, #4]
- ...
- 800031e: ldr   r3, [r7, #16]
- 8000320: lsls  r2, r3, #2
- 8000322: ldr   r3, [r7, #4]
- 8000324: lsrs  r3, r3, #30
- 8000326: orrs  r3, r2
- 8000328: str   r3, [r7, #16]
+200  rem = (rem << 2) | (n >> 30);
+08000428: lsrs    r5, r0, #30
+0800042a: lsls    r1, r1, #2
+0800042c: orrs    r1, r5
+
+201  n <<= 2;
+0800042e: lsls    r0, r0, #2
+
+202  root <<= 1;
+08000430: lsls    r3, r3, #1
+
+207  if (rem > root) {
+08000432: cmp     r1, r3
+08000434: bls.n   0x800043c
+
+208  rem -= root + 1U;
+08000436: subs    r1, r1, r3
+08000438: subs    r1, #1
+
+209  root += 2U;
+0800043a: adds    r3, #2
+
+197  for (int i = 0; i < 16; i++) {
+0800043c: subs    r2, #1
+0800043e: cmp     r2, #0
+08000440: bne.n   0x8000428
+
+214  return root >> 1;
+08000448: lsrs    r3, r3, #1
+
+244  sink = isqrt_fast(measured_x);
+0800044a: str     r3, [r6, #0]
+
+246  uint16_t after = (uint16_t)TIM3->CNT;
+0800044c: ldr     r3, [r5, #36]
 \end{lstlisting}
 
-At \texttt{-O2} there is no such symbol. The same loop appears inline inside
-\texttt{main}, with every value held in a register and no stack traffic at all:
-
-\begin{lstlisting}
- 8000264: movs  r1, #16
- 8000266: movs  r2, #0
- 8000268: movs  r3, #0
- 800026a: ldr   r0, [r7, r5]
- 800026c: lsrs  r4, r0, #30
- 800026e: lsls  r3, r3, #2
- 8000270: orrs  r3, r4
- 8000272: lsls  r0, r0, #2
- 8000274: lsls  r2, r2, #1
- 8000276: cmp   r3, r2
- 8000278: bls.n 8000280 <main+0xb0>
- 800027a: subs  r3, r3, r2
- 800027c: subs  r3, #1
- 800027e: adds  r2, #2
- 8000280: subs  r1, #1
- 8000282: cmp   r1, #0
- 8000284: bne.n 800026c <main+0x9c>
-\end{lstlisting}
-
-The loop body is 13 register-only instructions where \texttt{-O0} needed 25
-instructions with 12 memory accesses. The call overhead, the frame setup and
-every spill are gone.
+There is no \texttt{bl isqrt\_fast} instruction at the call site. The shift,
+comparison, conditional arithmetic and loop instructions from the function body
+appear directly inside the calling code instead. The transformation acts on the
+call to \texttt{isqrt\_fast} on line 244 and on the function body on lines 193
+to 215. Inlining removes the call and return overhead and lets the compiler
+optimise the body together with the surrounding timing code.
 
 \subsection{Trade-off between time and code size}
 
 Inlining removes the call, the return and the argument shuffling, and it lets
 the compiler specialise each copy for its call site. The price is one copy of
-the body per call site, which is exactly the 244 extra bytes \texttt{main}
-gained between \texttt{-O1} and \texttt{-O2}. On a part with 64 kB of flash that
-cost is affordable, but the general shape holds: \texttt{-O2} buys speed with
-space, \texttt{-Os} refuses that trade and keeps a single shared copy, and
+the body per call site, which is the 176 extra bytes the image gained between
+\texttt{-O1} and \texttt{-O2}. Put the other way round, \texttt{-O2} bought
+1.250 $\mu$s of execution time for 176 bytes of flash. On a part with 64 kB of
+flash that is affordable, but the general shape holds: \texttt{-O2} buys speed
+with space, \texttt{-Os} refuses that trade and keeps a single shared copy, and
 \texttt{-O1} lands close to \texttt{-Os} in size because it does the cheap
 register allocation work without the code duplication. \texttt{-O0} is worse on
-both axes at once, because the stack traffic it emits costs cycles and bytes
-together.
+both axes at once, at 2080 bytes and 94.125 $\mu$s, because the stack traffic it
+emits costs cycles and bytes together.
 
 \subsection{Answer to the Task 3 question}
 
-Measured time at \texttt{-O0}: \bench{value} $\mu$s. At \texttt{-O2}:
-\bench{value} $\mu$s. Measured ratio: \bench{value}, against a predicted ratio
-of 3. The transformation identified in the disassembly is function inlining,
-acting on the body of \texttt{isqrt\_fast} in \texttt{Core/Src/main.c} at its
-call sites in \texttt{verify\_against\_golden},
-\texttt{measure\_single\_call} and \texttt{measure\_long\_run}.
+Measured time at \texttt{-O0}: 94.125 $\mu$s. At \texttt{-O2}: 30.750 $\mu$s.
+The measured ratio is
+
+\[
+\frac{94.125}{30.750} = 3.061,
+\]
+
+against a predicted ratio of 2.0, so the gain from optimisation was larger than
+expected. The prediction only counted the saving from holding variables in
+registers instead of stack slots. Two further effects were not in it. Inlining
+removed the call and return overhead entirely, which the prediction had assumed
+would remain. Beyond that, \texttt{-O0} builds and tears down a stack frame on
+every call and reloads each local on every use, so its cost per pass is higher
+than a plain instruction count suggests. Together these push the real ratio
+above the predicted one.
+
+The transformation identified in the disassembly is function inlining, acting on
+the body of \texttt{isqrt\_fast} in \texttt{Core/Src/main.c}, lines 193 to 215,
+at the call site on line 244 and at its other call sites in
+\texttt{verify\_against\_golden} and \texttt{measure\_long\_run}.
 
 \section{Cycle-Counted Phase Delay}
 
@@ -755,7 +842,7 @@ routine, showing the letter A at the first column of the first line.}
 \section*{References}
 
 \begin{itemize}
-  \item STMicroelectronics. (2017). \textit{RM0091 Reference manual: STM32F0x1/STM32F0x2/STM32F0x8 advanced ARM-based 32-bit MCUs}. Section 6, Reset and clock control. Section 13, Analog-to-digital converter. Section 14, Digital-to-analog converter. Section 18, General-purpose timers TIM2/TIM3.
+  \item STMicroelectronics. (2017). \textit{RM0091 Reference manual: STM32F0x1/STM32F0x2/STM32F0x8 advanced ARM-based 32-bit MCUs}. Section 6, Reset and clock control, including Figure 11 clock tree on page 95 and Section 7.2.2 HSI clock on page 98. Section 13, Analog-to-digital converter. Section 14, Digital-to-analog converter. Section 18, General-purpose timers TIM2/TIM3.
   \item STMicroelectronics. (2017). \textit{STM32F051x4 STM32F051x6 STM32F051x8 datasheet}. Pin definitions and ADC characteristics.
   \item Hitachi. \textit{HD44780U (LCD-II) Dot Matrix Liquid Crystal Display Controller/Driver datasheet}. Bus timing characteristics, enable pulse width.
   \item ARM. \textit{Cortex-M0 Technical Reference Manual}. Instruction set summary and cycle counts.
