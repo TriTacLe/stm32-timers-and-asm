@@ -226,9 +226,9 @@ with its two neighbours, and 20 million pseudo-random 32-bit values. There were
 zero mismatches.
 
 On the board the same ten golden values from Table~\ref{tab:golden} are
-compiled into flash and compared at start-up. The green LED on PB11 lights when
-all ten match and the red LED on PB10 lights on any failure, so the pass or
-fail state is visible before any timing number is read.
+compiled into flash and compared at start-up. The LED on PB1 lights when all
+ten match and the LED on PB0 lights on any failure, so the pass or fail state
+is visible before any timing number is read.
 
 Observed result: the PB1 LED lit and the PB0 LED stayed dark, so all ten golden
 values matched. The debugger confirms it directly, with
