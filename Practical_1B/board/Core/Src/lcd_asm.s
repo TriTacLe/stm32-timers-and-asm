@@ -36,7 +36,6 @@
  * That works out to C equal to t divided by 2167.1.
  */
 
-@ ---
     .syntax unified
     .cpu cortex-m0
     .thumb
@@ -62,12 +61,10 @@
     .type lcd_init_asm, %function
     .type lcd_show_A, %function
 
-/* ------------------------------------------------------------------ */
-/* delay_iters                                                        */
-/* r0 holds the number of passes. Each pass is one SUBS and one taken  */
-/* branch, so four cycles, and the last pass saves two because the     */
-/* branch falls through.                                               */
-/* ------------------------------------------------------------------ */
+@ delay_iters
+@ r0 holds the number of passes. Each pass is one SUBS and one taken
+@ branch, so four cycles, and the last pass saves two because the
+@ branch falls through.
 delay_iters:
     subs    r0, r0, #1              @ 1
     bne     delay_iters             @ 3 when taken, 1 on the last pass
@@ -83,12 +80,10 @@ delay_ms:
     bl      delay_iters
     pop     {r0, r1, pc}
 
-/* ------------------------------------------------------------------ */
-/* lcd_pins_init                                                      */
-/* Enable, register select and the four data lines become push pull    */
-/* outputs. All six sit on three different ports, which is why this is  */
-/* longer than it looks like it should be.                             */
-/* ------------------------------------------------------------------ */
+@ lcd_pins_init
+@ Enable, register select and the four data lines become push pull
+@ outputs. All six sit on three different ports, which is why this is
+@ longer than it looks like it should be.
 lcd_pins_init:
     push    {r4, lr}
 
@@ -149,20 +144,18 @@ lcd_pins_init:
 
     pop     {r4, pc}
 
-/* ------------------------------------------------------------------ */
-/* lcd_put_nibble                                                     */
-/* r0 carries four bits in its bottom four, which go out on D7 to D4.  */
-/*                                                                     */
-/* BSRR is written rather than the output register because it sets and  */
-/* clears in one write and never disturbs the other pins on the port.   */
-/* The bottom half sets a pin and the top half clears it, so the bits   */
-/* that must go high shift up to their pin number and the bits that     */
-/* must go low shift up by another sixteen on top of that.              */
-/*                                                                     */
-/* D4 and D5 are PB8 and PB9, so the low pair shifts by 8, and the      */
-/* inverted pair by 24. D6 is PA12 and D7 is PA15, which are further    */
-/* apart, so those two bits are placed one at a time.                   */
-/* ------------------------------------------------------------------ */
+@ lcd_put_nibble
+@ r0 carries four bits in its bottom four, which go out on D7 to D4.
+@
+@ BSRR is written rather than the output register because it sets and
+@ clears in one write and never disturbs the other pins on the port.
+@ The bottom half sets a pin and the top half clears it, so the bits
+@ that must go high shift up to their pin number and the bits that
+@ must go low shift up by another sixteen on top of that.
+@
+@ D4 and D5 are PB8 and PB9, so the low pair shifts by 8, and the
+@ inverted pair by 24. D6 is PA12 and D7 is PA15, which are further
+@ apart, so those two bits are placed one at a time.
 lcd_put_nibble:
     push    {r4, r5, lr}
     mov     r4, r0
@@ -199,16 +192,14 @@ lcd_put_nibble:
 
     pop     {r4, r5, pc}
 
-/* ------------------------------------------------------------------ */
-/* lcd_pulse_e                                                        */
-/* Raise enable, hold it, drop it. The panel reads the data lines on    */
-/* the falling edge.                                                   */
-/*                                                                     */
-/* The block of NOPs is the whole point of Task 5. The 3V3 side of the  */
-/* line switches in a few nanoseconds, but the 5 V side has to climb    */
-/* through its pullup, and only the time it spends above 3.5 V counts   */
-/* towards the 450 ns the panel needs.                                 */
-/* ------------------------------------------------------------------ */
+@ lcd_pulse_e
+@ Raise enable, hold it, drop it. The panel reads the data lines on
+@ the falling edge.
+@
+@ The block of NOPs is the whole point of Task 5. The 3V3 side of the
+@ line switches in a few nanoseconds, but the 5 V side has to climb
+@ through its pullup, and only the time it spends above 3.5 V counts
+@ towards the 450 ns the panel needs.
 lcd_pulse_e:
     push    {r0, r1, lr}
     ldr     r0, =GPIOC_BASE
@@ -228,13 +219,11 @@ lcd_pulse_e:
     .endr
     pop     {r0, r1, pc}
 
-/* ------------------------------------------------------------------ */
-/* lcd_write                                                          */
-/* r0 carries the byte and r1 says what kind it is. Zero means a       */
-/* command and one means a character.                                  */
-/*                                                                     */
-/* In four bit mode a byte goes out as two pulses, high half first.     */
-/* ------------------------------------------------------------------ */
+@ lcd_write
+@ r0 carries the byte and r1 says what kind it is. Zero means a
+@ command and one means a character.
+@
+@ In four bit mode a byte goes out as two pulses, high half first.
 lcd_write:
     push    {r4, r5, lr}
     mov     r4, r0
@@ -268,12 +257,10 @@ lcd_write:
 
     pop     {r4, r5, pc}
 
-/* ------------------------------------------------------------------ */
-/* lcd_init_asm                                                       */
-/* The power on sequence from the HD44780 datasheet. It looks strange   */
-/* because the controller starts in eight bit mode and has to be talked  */
-/* into four bit mode using single nibbles.                             */
-/* ------------------------------------------------------------------ */
+@ lcd_init_asm
+@ The power on sequence from the HD44780 datasheet. It looks strange
+@ because the controller starts in eight bit mode and has to be talked
+@ into four bit mode using single nibbles.
 lcd_init_asm:
     push    {r4, lr}
     bl      lcd_pins_init
@@ -336,10 +323,8 @@ lcd_init_asm:
     pop     {r4, pc}
     .size lcd_init_asm, .-lcd_init_asm
 
-/* ------------------------------------------------------------------ */
-/* lcd_show_A                                                         */
-/* Put the cursor at the first column of the first line and write A.   */
-/* ------------------------------------------------------------------ */
+@ lcd_show_A
+@ Put the cursor at the first column of the first line and write A.
 lcd_show_A:
     push    {r4, lr}
     movs    r0, #0x80               @ set the display address to 0, the top left cell
@@ -351,4 +336,3 @@ lcd_show_A:
     bl      lcd_write
     pop     {r4, pc}
     .size lcd_show_A, .-lcd_show_A
-@ ---

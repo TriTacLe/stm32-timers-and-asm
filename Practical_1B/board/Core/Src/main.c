@@ -14,7 +14,6 @@
  */
 #include "stm32f0xx.h"
 
-// ---
 // Which part of the practical this build runs. Change it on the command
 // line with make TASK=4 rather than editing the file, so the same source
 // produces all three images.
@@ -67,7 +66,6 @@ volatile uint32_t long_run_overflows;   // how many times the counter wrapped
 volatile uint32_t long_run_ns_per_call; // long run total divided by the calls
 volatile uint32_t verify_failures;      // golden values that did not match
 volatile uint32_t sink;                 // catches the result so the call stays
-// ---
 
 static void GPIO_Init(void);
 static void TIM3_Init(void);
@@ -77,7 +75,6 @@ static void measure_single_call(uint32_t x);
 static void measure_long_run(void);
 
 int main(void) {
-  // ---
 #if PRAC1B_TASK == 4
   phase_delay_run(); // this never comes back, the sample loop runs forever
 
@@ -115,11 +112,9 @@ int main(void) {
     measure_single_call(987654321U);
   }
 #endif
-  // ---
 }
 
 static void GPIO_Init(void) {
-  // ---
   // Nothing on a GPIO port responds until its clock is running, so this
   // comes first. Port B carries the LEDs and port C carries the timing pin.
   RCC->AHBENR |= RCC_AHBENR_GPIOBEN | RCC_AHBENR_GPIOCEN;
@@ -150,11 +145,9 @@ static void GPIO_Init(void) {
   GPIOB->MODER &= ~((3U << (LED_FAIL * 2)) | (3U << (LED_PASS * 2)));
   GPIOB->MODER |= (1U << (LED_FAIL * 2)) | (1U << (LED_PASS * 2));
   GPIOB->BRR = (1U << LED_FAIL) | (1U << LED_PASS);
-  // ---
 }
 
 static void TIM3_Init(void) {
-  // ---
   // Same story as the GPIO ports. TIM3 hangs off APB1 and ignores every
   // register write until its clock is enabled.
   RCC->APB1ENR |= RCC_APB1ENR_TIM3EN;
@@ -173,10 +166,8 @@ static void TIM3_Init(void) {
   TIM3->SR = 0;
 
   TIM3->CR1 |= TIM_CR1_CEN;
-  // ---
 }
 
-// ---
 // Integer square root, worked out two bits at a time. Sixteen passes cover
 // all thirty two bits of the input.
 //
@@ -294,4 +285,3 @@ static void measure_long_run(void) {
   long_run_ns_per_call =
       (uint32_t)(((uint64_t)long_run_ticks * NS_PER_TICK) / LONG_RUN_CALLS);
 }
-// ---

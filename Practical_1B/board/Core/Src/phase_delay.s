@@ -42,7 +42,6 @@
  * at the bench.
  */
 
-@ ---
     .syntax unified
     .cpu cortex-m0
     .thumb
@@ -187,4 +186,3 @@ delay_loop:
     b       sample_loop             @ 3  round again
 
     .size phase_delay_run, .-phase_delay_run
-@ ---
