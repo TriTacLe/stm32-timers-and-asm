@@ -6,8 +6,8 @@
  * PC13 is the timing pin. It sits high and is pulled low only while the
  * function under test runs, so the low part of the scope trace is the
  * execution window and nothing else.
- * PB11 is the green LED and lights when all ten golden values match.
- * PB10 is the red LED and lights when any of them do not.
+ * PB1 is the red LED and lights when all ten golden values match.
+ * PB0 is the red LED and lights when any of them do not.
  *
  * TIM3 free runs at the full 8 MHz. One tick is therefore 125 ns and the
  * 16 bit counter takes 8.192 ms to come back around to where it started.
@@ -29,8 +29,8 @@ extern void lcd_init_asm(void);
 extern void lcd_show_A(void);
 
 #define PULSE_PIN 13U // PC13, the pin the scope watches
-#define LED_FAIL 10U  // PB10, red
-#define LED_PASS 11U  // PB11, green
+#define LED_FAIL 0U   // PB0, wrong result
+#define LED_PASS 1U   // PB1, correct result
 
 // A prescaler of zero means the timer counts at the full peripheral clock,
 // which keeps the resolution as fine as the hardware allows. An auto reload
@@ -236,9 +236,13 @@ static uint32_t verify_against_golden(void) {
 // shorter than one full lap of the counter, and a lap is 8.192 ms, which is
 // hundreds of times longer than the call.
 static void measure_single_call(uint32_t x) {
+  volatile uint32_t measured_x = x;
+
   GPIOC->BRR = (1U << PULSE_PIN);
   uint16_t before = (uint16_t)TIM3->CNT;
-  sink = isqrt_fast(x);
+
+  sink = isqrt_fast(measured_x);
+
   uint16_t after = (uint16_t)TIM3->CNT;
   GPIOC->BSRR = (1U << PULSE_PIN);
 
@@ -280,7 +284,10 @@ static void measure_long_run(void) {
   }
 
   long_run_overflows = overflows;
-  long_run_ticks = overflows * 65536U + (uint32_t)(uint16_t)(after - before);
+  long_run_ticks =
+      overflows * 65536U +
+      (uint32_t)after -
+      (uint32_t)before;
 
   // Cast to 64 bit before multiplying. The tick count times 125 overflows a
   // 32 bit value on a run this long and the mean would come out nonsense.
