@@ -138,18 +138,18 @@ $(BUILD_DIR):
 clean:
 	-rm -fR $(BUILD_DIR)
   
-STM32_TOOLS ?= /home/tri/st/stm32cubeide_2.2.0/plugins/com.st.stm32cube.ide.mcu.externaltools.gnu-tools-for-stm32.14.3.rel1.linux64_1.0.100.202602081740/tools/bin
-STM32_PROG ?= /home/tri/st/stm32cubeide_2.2.0/plugins/com.st.stm32cube.ide.mcu.externaltools.cubeprogrammer.linux64_2.2.500.202603051304/tools/bin/STM32_Programmer_CLI
+# Keep tools portable: use PATH, GCC_PATH, or override STM32_PROG explicitly.
+# STM32CubeIDE debug/flash launches do not use this command-line flash target.
+STM32_PROG ?= STM32_Programmer_CLI
 
 task%: main.c%
 	cp -f main.c$* Core/Src/main.c
-	PATH="$(STM32_TOOLS):$$PATH" $(MAKE) all
+	$(MAKE) all
 	$(MAKE) flash
 
 flash: | $(BUILD_DIR)
-	$(STM32_PROG) -c port=SWD -w $(BUILD_DIR)/$(TARGET).bin 0x08000000 -v -rst
+	$(STM32_PROG) -c port=SWD mode=UR reset=HWrst freq=1000 -w $(BUILD_DIR)/$(TARGET).bin 0x08000000 -v -rst
 
 .PHONY: flash
 
 -include $(wildcard $(BUILD_DIR)/*.d)
-
