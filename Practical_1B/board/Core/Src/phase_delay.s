@@ -1,45 +1,5 @@
 /*
  * Practical 1B, Task 4
- *
- * What this file does. It reads the ADC on PB0 over and over and writes each
- * sample straight to DAC1 on PA4, with a delay in the loop sized so the output
- * comes out a quarter of a period late. At 1 kHz that quarter turn is 45
- * degrees, which is what the practical asks for.
- *
- * The clock is the 8 MHz internal RC oscillator with no PLL, so one CPU cycle
- * lasts 125 ns. Every count in this file comes back to that number.
- *
- * The ADC is deliberately clocked from PCLK divided by two, which is 4 MHz,
- * set through CKMODE in CFGR2. That ties the conversion time to the same clock
- * the cycle counting uses. Left on the default asynchronous clock it would run
- * from a separate oscillator and the delay would drift against it.
- *
- * Working out the target
- *   the input period is one over one thousand, which is 1 ms
- *   45 degrees is an eighth of a turn, so the delay is 125 us
- *   at 125 ns per cycle that is 1000 cycles
- *
- * Cycle costs on the Cortex M0, from the ARM technical reference manual
- *   MOVS, SUBS and NOP take one cycle
- *   LDR and STR take two
- *   a branch takes three when it is taken and one when it falls through
- *
- * Where the 1000 cycles go. The sample and hold closes about one and a half
- * ADC clocks after ADSTART is written, which is 3 CPU cycles, so the clock
- * really starts a little after the write. From there to the DAC write the path
- * costs
- *
- *     MOVS  r2, #DELAY_ITERS        1
- *     the delay loop, N passes      4N minus 2
- *     LDR   r3, [ADC, #DR]          2
- *     STR   r3, [DAC, #DHR12R1]     2
- *
- * which adds up to 4N plus 3. Setting that equal to 1000 plus the 3 cycles the
- * sample and hold costs gives 4N plus 3 equal to 1003, so N is 250.
- *
- * Each pass of the delay loop is four cycles, which is 500 ns. So one step of
- * DELAY_ITERS moves the output by 500 ns if the measured phase needs nudging
- * at the bench.
  */
 
     .syntax unified
