@@ -919,10 +919,10 @@ shows the letter, so 8 stays in the code as the value with proof behind it;
     str     r1, [r0, #GPIO_BRR]     @ 2  E low, the panel latches on this edge
 \end{lstlisting}
 
-Figure~\ref{fig:efix} is the same pair of probes after the NOP count is set
-from the measured rise time, and Figure~\ref{fig:lcd} is the panel itself with
-the letter on it, which is the end to end proof that the timing is now inside
-what the controller needs.
+Figure~\ref{fig:efix} is the rising edge of PC15\_S with the 8 NOP pulse in
+place, and Figure~\ref{fig:lcd} is the panel itself with the letter on it,
+which is the end to end proof that the timing is inside what the controller
+needs.
 
 \scopefig{task5-enable-fixed.jpg}{efix}{Rising edge of PC15\_S at the LCD
 E pin, 1 V/div, 1 us/div. Max 4.95 V, 10 to 90 percent rise 380 ns. The edge
