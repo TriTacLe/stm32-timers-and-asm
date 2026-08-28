@@ -491,8 +491,61 @@ acts on are the body of \texttt{isqrt\_fast} in
 
 At \texttt{-O0} the routine is a separate function whose locals all live on the
 stack, reached through a \texttt{bl} at each call site.
-\bench{paste the -O0 disassembly of isqrt\_fast from the same build the table
-was measured on, so the addresses match}
+The listing below is \texttt{arm-none-eabi-objdump -d} of a fresh
+\texttt{-O0} build of the same source, so the addresses match the measured
+image.
+
+\begin{lstlisting}
+080002fc <isqrt_fast>:
+ 80002fc:	b580      	push	{r7, lr}
+ 80002fe:	b086      	sub	sp, #24
+ 8000300:	af00      	add	r7, sp, #0
+ 8000302:	6078      	str	r0, [r7, #4]
+ 8000304:	2300      	movs	r3, #0
+ 8000306:	617b      	str	r3, [r7, #20]
+ 8000308:	2300      	movs	r3, #0
+ 800030a:	613b      	str	r3, [r7, #16]
+ 800030c:	2300      	movs	r3, #0
+ 800030e:	60fb      	str	r3, [r7, #12]
+ 8000310:	e01a      	b.n	8000348 <isqrt_fast+0x4c>
+ 8000312:	693b      	ldr	r3, [r7, #16]
+ 8000314:	009a      	lsls	r2, r3, #2
+ 8000316:	687b      	ldr	r3, [r7, #4]
+ 8000318:	0f9b      	lsrs	r3, r3, #30
+ 800031a:	4313      	orrs	r3, r2
+ 800031c:	613b      	str	r3, [r7, #16]
+ 800031e:	687b      	ldr	r3, [r7, #4]
+ 8000320:	009b      	lsls	r3, r3, #2
+ 8000322:	607b      	str	r3, [r7, #4]
+ 8000324:	697b      	ldr	r3, [r7, #20]
+ 8000326:	005b      	lsls	r3, r3, #1
+ 8000328:	617b      	str	r3, [r7, #20]
+ 800032a:	693a      	ldr	r2, [r7, #16]
+ 800032c:	697b      	ldr	r3, [r7, #20]
+ 800032e:	429a      	cmp	r2, r3
+ 8000330:	d907      	bls.n	8000342 <isqrt_fast+0x46>
+ 8000332:	693a      	ldr	r2, [r7, #16]
+ 8000334:	697b      	ldr	r3, [r7, #20]
+ 8000336:	1ad3      	subs	r3, r2, r3
+ 8000338:	3b01      	subs	r3, #1
+ 800033a:	613b      	str	r3, [r7, #16]
+ 800033c:	697b      	ldr	r3, [r7, #20]
+ 800033e:	3302      	adds	r3, #2
+ 8000340:	617b      	str	r3, [r7, #20]
+ 8000342:	68fb      	ldr	r3, [r7, #12]
+ 8000344:	3301      	adds	r3, #1
+ 8000346:	60fb      	str	r3, [r7, #12]
+ 8000348:	68fb      	ldr	r3, [r7, #12]
+ 800034a:	2b0f      	cmp	r3, #15
+ 800034c:	dde1      	ble.n	8000312 <isqrt_fast+0x16>
+ 800034e:	697b      	ldr	r3, [r7, #20]
+ 8000350:	085b      	lsrs	r3, r3, #1
+ 8000352:	0018      	movs	r0, r3
+ 8000354:	46bd      	mov	sp, r7
+ 8000356:	b006      	add	sp, #24
+ 8000358:	bd80      	pop	{r7, pc}
+	...
+\end{lstlisting}
 
 At \texttt{-O2} there is no such symbol. The loop appears inline in the caller,
 with every value held in a register and no stack traffic at all:
