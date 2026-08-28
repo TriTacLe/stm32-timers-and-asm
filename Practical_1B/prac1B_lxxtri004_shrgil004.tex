@@ -739,13 +739,10 @@ high, so the climb from 0 V to 3.5 V is dead time. An enable pulse whose high
 period is only long enough on the 3.3 V side leaves the 5 V side below threshold
 for the whole pulse, the panel never latches, and nothing appears on the screen.
 
-\scopefig{task5-enable-failing.png}{efail}{Enable line before the fix. PC15
-switches cleanly on the 3V3 side while PC15\_S never climbs past 3.5 V, so the
-panel sees no valid high.}
-
-Figure~\ref{fig:efail} is the failing case. PC15 switches in a few nanoseconds
-on the 3V3 side while PC15\_S is still climbing, and the panel latches nothing
-because the level it saw never counted as a high.
+The failing case was not captured on the bench. The routine was only run
+with the NOP count already in place, so the report has no trace of PC15\_S
+staying below 3.5 V for a whole pulse. What was measured is the rising edge
+itself, which is enough to size the pulse, and that is in the next sections.
 
 \subsection{The initialisation subroutine}
 
@@ -807,7 +804,19 @@ lcd_show_A:
 \subsection{Rise time measurement}
 
 \begin{itemize}
-  \item Measured 0 V to 3.5 V rise time on \texttt{PC15\_S}: \bench{$t$ with cursors}
+  \item Probe: Agilent DSO-X 2002A, channel 1 on a 1:1 BNC lead, 1 V/div,
+    ground clip on LCD pin 1 (VSS), signal clip on LCD pin 6 (E, the
+    \texttt{PC15\_S} net), 1 us/div, edge trigger on channel 1 at 1.5 V.
+    Board on the 8 MHz HSI, debugger not attached, RESET pressed by hand to
+    catch the edge. Figure~\ref{fig:efix} is the capture.
+  \item Measured high level on \texttt{PC15\_S}: 4.95 V (scope Max), so the
+    shifter does reach the 5 V rail.
+  \item Measured 10 to 90 percent rise time (scope Rise measurement): 380 ns.
+  \item Time from 0 V to 3.5 V is not a scope measurement directly. For a
+    first-order RC edge the 10 to 90 percent time is $2.197\,\tau$, so
+    $\tau = 380 / 2.197 \approx 173$ ns, and 3.5 V on a 5 V rail is reached at
+    $-\tau \ln(0.3) = 1.204\,\tau \approx 208$ ns. That 208 ns is the $t$ used
+    below.
 \end{itemize}
 
 \subsection{Capacitance calculation}
@@ -829,7 +838,8 @@ $V_C(t) = 3.5$ V,
 C = \frac{t}{1800 \times 1.20397} = \frac{t}{2167.1}.
 \]
 
-Substituting the measured rise time gives $C = \bench{result}$.
+Substituting $t = 208$ ns gives $C = 208 / 2167.1 \approx 96$ pF. The same
+number falls out of $\tau = RC$ directly: $173~\text{ns} / 1800~\Omega = 96$ pF.
 
 \subsection{NOP count derivation}
 
@@ -841,10 +851,11 @@ the enable line must be held high for the rise time plus the hold requirement:
 n = \left\lceil \frac{t_{\text{rise}} + 450~\text{ns}}{125~\text{ns}} \right\rceil.
 \]
 
-With the measured rise time this gives $n = \bench{value}$ NOPs, set as
-\texttt{E\_HIGH\_NOPS} in \texttt{Core/Src/lcd\_asm.s}. The source currently
-carries a starting value of 8, which must be replaced by the value derived from
-the measurement above.
+With $t = 208$ ns this gives $n = \lceil 658 / 125 \rceil = 6$ NOPs. The
+source carries \texttt{E\_HIGH\_NOPS = 8} in \texttt{Core/Src/lcd\_asm.s},
+two cycles above the derived minimum. The panel was only tested at 8, where it
+shows the letter, so 8 stays in the code as the value with proof behind it;
+6 is the computed floor and was not tried on the bench.
 
 \begin{lstlisting}
     str     r1, [r0, #GPIO_BSRR]    @ 2  E high, PC15_S starts its RC climb
@@ -859,9 +870,9 @@ from the measured rise time, and Figure~\ref{fig:lcd} is the panel itself with
 the letter on it, which is the end to end proof that the timing is now inside
 what the controller needs.
 
-\scopefig{task5-enable-fixed.png}{efix}{Enable line after the NOP count is
-set from the measured rise time. PC15\_S now holds above 3.5 V for longer than
-the 450 ns the HD44780 asks for.}
+\scopefig{task5-enable-fixed.jpg}{efix}{Rising edge of PC15\_S at the LCD
+E pin, 1 V/div, 1 us/div. Max 4.95 V, 10 to 90 percent rise 380 ns. The edge
+is the RC climb through the 1.8 k$\Omega$ pullup.}
 
 \scopefig{task5-lcd-photo.jpg}{lcd}{The panel driven by the assembly
 routine, showing the letter A at the first column of the first line.}
