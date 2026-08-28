@@ -874,12 +874,15 @@ lcd_show_A:
     mode. Board on the 8 MHz HSI, firmware built at -O2 (the routine is hand written assembly, so the level does not touch it), debugger not attached. The Task 5
     build rewrites the letter in a loop so the pulse repeats and the scope can
     trigger on it at any time. Figure~\ref{fig:efix} is the capture.
-  \item Channel 2 was a 10:1 probe on the header pin labelled PC15. It read
-    a 5.07 V maximum, above the 3.3 V rail, so that header pin is on the
-    5 V side of the shifter and the green trace is a second view of
-    \texttt{PC15\_S}, not the 3.3 V \texttt{PC15} the brief asks to show
-    beside it. No number below comes from channel 2. A capture with the
-    probe on the microcontroller side of the shifter was not taken.
+  \item Channel 2 was a 10:1 probe on the PC15 header pin, the 3.3 V side
+    of the shifter, 1.96 V/div. The scope Max on that channel reads 5.10 V,
+    but that is the overshoot spike on the driven rising edge and not the
+    level: cursors on the same trace (Figure~\ref{fig:pc15}) put the low
+    at 98 mV and the settled high at 3.60 V, a swing of 3.50 V. The green
+    trace in the captures is therefore \texttt{PC15} next to
+    \texttt{PC15\_S}, and it shows the two sides of the shifter at once:
+    the 3.3 V side switches sharply in both directions, the 5 V side only
+    falls sharply and climbs through the pullup.
   \item Measured high level on \texttt{PC15\_S}: 4.86 V (scope Max), so the
     shifter does reach the 5 V rail.
   \item Measured 10 to 90 percent rise time (scope Rise measurement): 233 ns.
@@ -944,15 +947,21 @@ the code as the value with proof behind it.
 \end{lstlisting}
 
 Figure~\ref{fig:efix} is the whole pulse on PC15\_S with the 8 NOPs in
-place, Figures~\ref{fig:erise} and \ref{fig:ewidth} put cursors on its rise
+place with PC15 beneath it, Figure~\ref{fig:pc15} puts cursors on the PC15
+level, Figures~\ref{fig:erise} and \ref{fig:ewidth} put cursors on its rise
 and its width, Figure~\ref{fig:efail} is the 0 NOP pulse for comparison, and
 Figure~\ref{fig:lcd} is the panel itself with the letter on it, which is the
 end to end proof that the timing is inside what the controller needs.
 
 \scopefig{task5-enable-fixed.jpg}{efix}{The 8 NOP enable pulse on PC15\_S at
-the LCD E pin (channel 1, 2 V/div, 500 ns/div). Max 4.86 V, 10 to 90 percent
-rise 233 ns. The rising edge is the climb through the 1.8 k$\Omega$ pullup,
+the LCD E pin (channel 1, yellow, 2 V/div, 500 ns/div) with PC15 on the 3.3 V
+side beneath it (channel 2, green). Max 4.86 V, 10 to 90 percent rise 233 ns. The rising edge is the climb through the 1.8 k$\Omega$ pullup,
 the falling edge is driven and is much faster.}
+
+\scopefig{task5-pc15-level.jpg}{pc15}{Cursors on channel 2, the 3.3 V
+\texttt{PC15} side, 1.96 V/div: Y1 98 mV, Y2 3.60 V, a swing of 3.50 V. The
+5.10 V maximum the scope reports for this channel is the overshoot on the
+rising edge visible at the left of the flat top.}
 
 \scopefig{task5-enable-rise-cursors.jpg}{erise}{Cursors on the rising edge
 of the same pulse, X1 at 0 V and X2 at 3.5 V: 220 ns.}
