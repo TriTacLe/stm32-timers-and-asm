@@ -183,11 +183,11 @@ inequalities together prove $\mathrm{isqrt}(987654321) = 31426$.
 \subsection{Answer to the Task 1 question}
 
 The golden output for the input 987654321 is \textbf{31426}. The measured time
-per call is \textbf{1.617 ns} in run A and \textbf{1.639 ns} in run B, using
+per call is \textbf{2.959 ns} in run A and \textbf{2.517 ns} in run B, using
 \textbf{1\,000\,000} and \textbf{10\,000\,000} repetitions respectively.
 
 A single call timed on its own is not reliable because the quantity being
-measured is smaller than the tools used to measure it. One call takes under two
+measured is smaller than the tools used to measure it. One call takes about three
 nanoseconds while \texttt{clock\_gettime} itself costs tens of nanoseconds, so
 the clock call would dominate the reading. On top of that, the first call runs
 with a cold branch predictor and cold caches, the core may still be at a low
@@ -370,9 +370,8 @@ of extra instructions per iteration.
 The long-run figures above are read from the debugger in
 Figure~\ref{fig:debugger}. A scope capture of the pulse train would give an
 independent check on the wrap arithmetic, because counting periods on the screen
-never touches the overflow counter at all.
-\bench{capture the pulse train during the long run if bench time allows, it is
-not one of the eight required screenshots}
+never touches the overflow counter at all. That capture was not taken; it is
+not one of the required screenshots.
 
 \subsection{Answer to the Task 2 question}
 
@@ -553,48 +552,48 @@ At \texttt{-O2} there is no such symbol. The loop appears inline in the caller,
 with every value held in a register and no stack traffic at all:
 
 \begin{lstlisting}
-200  rem = (rem << 2) | (n >> 30);
+191  rem = (rem << 2) | (n >> 30);
 08000428: lsrs    r5, r0, #30
 0800042a: lsls    r1, r1, #2
 0800042c: orrs    r1, r5
 
-201  n <<= 2;
+192  n <<= 2;
 0800042e: lsls    r0, r0, #2
 
-202  root <<= 1;
+193  root <<= 1;
 08000430: lsls    r3, r3, #1
 
-207  if (rem > root) {
+198  if (rem > root) {
 08000432: cmp     r1, r3
 08000434: bls.n   0x800043c
 
-208  rem -= root + 1U;
+199  rem -= root + 1U;
 08000436: subs    r1, r1, r3
 08000438: subs    r1, #1
 
-209  root += 2U;
+200  root += 2U;
 0800043a: adds    r3, #2
 
-197  for (int i = 0; i < 16; i++) {
+188  for (int i = 0; i < 16; i++) {
 0800043c: subs    r2, #1
 0800043e: cmp     r2, #0
 08000440: bne.n   0x8000428
 
-214  return root >> 1;
+205  return root >> 1;
 08000448: lsrs    r3, r3, #1
 
-244  sink = isqrt_fast(measured_x);
+236  sink = isqrt_fast(measured_x);
 0800044a: str     r3, [r6, #0]
 
-246  uint16_t after = (uint16_t)TIM3->CNT;
+238  uint16_t after = (uint16_t)TIM3->CNT;
 0800044c: ldr     r3, [r5, #36]
 \end{lstlisting}
 
 There is no \texttt{bl isqrt\_fast} instruction at the call site. The shift,
 comparison, conditional arithmetic and loop instructions from the function body
 appear directly inside the calling code instead. The transformation acts on the
-call to \texttt{isqrt\_fast} on line 244 and on the function body on lines 193
-to 215. Inlining removes the call and return overhead and lets the compiler
+call to \texttt{isqrt\_fast} on line 236 and on the function body on lines 184
+to 206. Inlining removes the call and return overhead and lets the compiler
 optimise the body together with the surrounding timing code.
 
 \subsection{Trade-off between time and code size}
@@ -630,8 +629,8 @@ than a plain instruction count suggests. Together these push the real ratio
 above the predicted one.
 
 The transformation identified in the disassembly is function inlining, acting on
-the body of \texttt{isqrt\_fast} in \texttt{Core/Src/main.c}, lines 193 to 215,
-at the call site on line 244 and at its other call sites in
+the body of \texttt{isqrt\_fast} in \texttt{Core/Src/main.c}, lines 184 to 206,
+at the call site on line 236 and at its other call sites in
 \texttt{verify\_against\_golden} and \texttt{measure\_long\_run}.
 
 \clearpage
@@ -735,13 +734,15 @@ tied to the same 8 MHz the cycle count is derived from.
 
 \subsection{Measurement}
 
-Figure~\ref{fig:phase} carries the reading. The cursors sit on the same feature
+The loop was built with the top level Makefile at -O2, which does not touch
+hand written assembly, and run on the 8 MHz HSI with the debugger not
+attached. Figure~\ref{fig:phase} carries the reading. The cursors sit on the same feature
 of both traces, a zero crossing in the same direction, so what they measure is
 the delay from sample to output and not a difference in amplitude or offset.
 
 \scopefig{task4-phase-delay.png}{phase}{CH1 on PB0 carries the 1 kHz input,
 CH2 on PA4 carries the DAC output. Cursors sit on the same feature of both
-traces so the reading is the sample-to-output delay.}
+traces so the reading is the sample-to-output delay: 136 us.}
 
 \begin{itemize}
   \item Scope: Keysight DSOX2002A, 200 $\mu$s/div, CH1 on PB0, CH2 on PA4,
@@ -873,9 +874,12 @@ lcd_show_A:
     mode. Board on the 8 MHz HSI, firmware built at -O2 (the routine is hand written assembly, so the level does not touch it), debugger not attached. The Task 5
     build rewrites the letter in a loop so the pulse repeats and the scope can
     trigger on it at any time. Figure~\ref{fig:efix} is the capture.
-  \item Channel 2 was a 10:1 probe on the PC15 header pin. It read a 5.07 V
-    maximum, above the 3.3 V rail, so that probe was not sitting on the
-    3.3 V side of the shifter and no number below comes from it.
+  \item Channel 2 was a 10:1 probe on the header pin labelled PC15. It read
+    a 5.07 V maximum, above the 3.3 V rail, so that header pin is on the
+    5 V side of the shifter and the green trace is a second view of
+    \texttt{PC15\_S}, not the 3.3 V \texttt{PC15} the brief asks to show
+    beside it. No number below comes from channel 2. A capture with the
+    probe on the microcontroller side of the shifter was not taken.
   \item Measured high level on \texttt{PC15\_S}: 4.86 V (scope Max), so the
     shifter does reach the 5 V rail.
   \item Measured 10 to 90 percent rise time (scope Rise measurement): 233 ns.
@@ -883,7 +887,8 @@ lcd_show_A:
     (Figure~\ref{fig:erise}): 220 ns. That is the $t$ used below.
   \item Time E stays high with the 8 NOP pulse, by cursors from the rising
     to the falling edge (Figure~\ref{fig:ewidth}): 1.250 us. Ten cycles at
-    125 ns is exactly 1.250 us, which is the two stores plus the eight NOPs.
+    125 ns is exactly 1.250 us: the eight NOPs plus the closing store, counted
+from the edge the opening store produced.
 \end{itemize}
 
 \subsection{Capacitance calculation}
