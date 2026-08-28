@@ -27,7 +27,7 @@
  * So the number of cycles the pulse needs is the rise time plus 450 ns,
  * divided by 125 ns and rounded up.
  *
- * E_HIGH_NOPS below is that number. Measured on the bench: 233 ns 10 to 90
+ * E_HIGH_NOPS below is that number. Measured on the bench: 250 ns 10 to 90
  * percent rise on PC15_S, 220 ns by cursor to reach 3.5 V, which rounds up to
  * 6 NOPs. 8 is kept as the tested value with two cycles of margin.
  *
