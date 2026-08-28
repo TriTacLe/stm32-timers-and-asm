@@ -947,8 +947,9 @@ the code as the value with proof behind it.
 \end{lstlisting}
 
 Figure~\ref{fig:efix} is the whole pulse on PC15\_S with the 8 NOPs in
-place with PC15 beneath it, Figure~\ref{fig:pc15} puts cursors on the PC15
-level, Figures~\ref{fig:erise} and \ref{fig:ewidth} put cursors on its rise
+place with PC15 beneath it, Figure~\ref{fig:efix5} is the same pair at
+5 V/div with the measurement panel, Figure~\ref{fig:pc15} puts cursors on the
+PC15 level, Figures~\ref{fig:erise} and \ref{fig:ewidth} put cursors on its rise
 and its width, Figure~\ref{fig:efail} is the 0 NOP pulse for comparison, and
 Figure~\ref{fig:lcd} is the panel itself with the letter on it, which is the
 end to end proof that the timing is inside what the controller needs.
@@ -962,6 +963,11 @@ the falling edge is driven and is much faster.}
 \texttt{PC15} side, 1.96 V/div: Y1 98 mV, Y2 3.60 V, a swing of 3.50 V. The
 5.10 V maximum the scope reports for this channel is the overshoot on the
 rising edge visible at the left of the flat top.}
+
+\scopefig{task5-enable-fixed-5vdiv.jpg}{efix5}{The same two traces at
+5 V/div on channel 1 and 1.96 V/div on channel 2, with the measurement panel:
+Max(1) 4.87 V, Rise(1) 250 ns, Max(2) 5.10 V. The coarser vertical scale on
+channel 1 reads the rise 17 ns longer than Figure~\ref{fig:efix}.}
 
 \scopefig{task5-enable-rise-cursors.jpg}{erise}{Cursors on the rising edge
 of the same pulse, X1 where the edge leaves the low level and X2 where it
