@@ -49,8 +49,8 @@ extern void lcd_show_A(void);
 // produced on the PC in Task 1. The board has to agree with all ten before
 // any timing number from it means anything.
 static const uint32_t golden_in[GOLDEN_COUNT] = {
-    0U,     1U,          15U,         16U,         4095U,
-    65535U, 123456789U,  987654321U,  4294836225U, 4294967295U,
+    0U,     1U,         15U,        16U,         4095U,
+    65535U, 123456789U, 987654321U, 4294836225U, 4294967295U,
 };
 static const uint32_t golden_out[GOLDEN_COUNT] = {
     0U, 1U, 3U, 4U, 63U, 255U, 11111U, 31426U, 65535U, 65535U,
@@ -218,6 +218,7 @@ static uint32_t verify_against_golden(void) {
   return failures;
 }
 
+// Task 2
 // One timed call. The pin drops, the counter is read, the call runs, the
 // counter is read again and the pin goes back up.
 //
@@ -275,10 +276,7 @@ static void measure_long_run(void) {
   }
 
   long_run_overflows = overflows;
-  long_run_ticks =
-      overflows * 65536U +
-      (uint32_t)after -
-      (uint32_t)before;
+  long_run_ticks = overflows * 65536U + (uint32_t)after - (uint32_t)before;
 
   // Cast to 64 bit before multiplying. The tick count times 125 overflows a
   // 32 bit value on a run this long and the mean would come out nonsense.

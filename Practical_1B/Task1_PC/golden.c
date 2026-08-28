@@ -1,12 +1,11 @@
 /*
  * Task 1, the golden measure.
  *
+ *
  * The job is to work out the integer square root of a 32 bit unsigned value,
  * meaning the largest whole number whose square still fits under the input.
  * This version runs on the PC and uses double precision and the standard
- * library, which is exactly what the practical asks for. It is the reference
- * the board version gets checked against later, so it is written for
- * obviously correct rather than for fast.
+ * library, which is exactly what the prac asks for.
  *
  * It also times one call, which is the other half of Task 1.
  */
@@ -15,9 +14,11 @@
 #include <stdio.h>
 #include <time.h>
 
+// hardcoded
+// U suffix tells compiler this literal is unsigned
 static const uint32_t INPUTS[] = {
-    0U,          1U,          15U,         16U,         4095U,
-    65535U,      123456789U,  987654321U,  4294836225U, 4294967295U,
+    0U,     1U,         15U,        16U,         4095U,
+    65535U, 123456789U, 987654321U, 4294836225U, 4294967295U,
 };
 #define N_INPUTS (sizeof(INPUTS) / sizeof(INPUTS[0]))
 
@@ -30,6 +31,8 @@ static const uint32_t INPUTS[] = {
  */
 uint32_t isqrt_golden(uint32_t x) {
   uint32_t r = (uint32_t)sqrt((double)x);
+
+  // solve float point error
   while ((uint64_t)r * r > (uint64_t)x) {
     r--;
   }
@@ -52,7 +55,7 @@ static int hand_check(uint32_t x, uint32_t r) {
 }
 
 /* A monotonic clock, so the reading cannot jump if the system clock is
-   adjusted while the loop is running. */
+   adjusted while the loop is running. monotonic only moves forward*/
 static double now_ns(void) {
   struct timespec ts;
   clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -62,6 +65,9 @@ static double now_ns(void) {
 /* Every result is stored here. Marking it volatile means the compiler has to
    keep the call, otherwise it would notice nothing uses the answer and delete
    the very thing being timed. */
+// Volatile means that compiler cannot delete the writes, cannot reorder or
+// delete it and keeping the writes keeps the calls, so we time real work.
+//
 static volatile uint32_t sink;
 
 /*
@@ -88,14 +94,14 @@ int main(void) {
   for (size_t i = 0; i < N_INPUTS; i++) {
     uint32_t x = INPUTS[i];
     uint32_t r = isqrt_golden(x);
-    printf("%12u  %10u  %22llu  %22llu  %s\n", x, r,
-           (unsigned long long)r * r, (unsigned long long)(r + 1) * (r + 1),
+    printf("%12u  %10u  %22llu  %22llu  %s\n", x, r, (unsigned long long)r * r,
+           (unsigned long long)(r + 1) * (r + 1),
            hand_check(x, r) ? "pass" : "FAIL");
   }
 
   /* Two runs an order of magnitude apart. If the time per call comes out the
-     same in both then the number is the cost of the function and not an
-     artefact of how long the loop ran. */
+     same in both then the number is the cost of the function and  not how long
+     the loop ran. */
   const long reps_a = 1000000L;
   const long reps_b = 10000000L;
   double a = time_per_call_ns(reps_a);
