@@ -80,10 +80,10 @@ int main(void) {
 
 #elif PRAC1B_TASK == 5
   lcd_init_asm();
-  lcd_show_A();
   while (1) {
-    // The panel holds the character by itself, so there is nothing to do
-    // here. The loop only keeps the processor from running off the end.
+    // Rewrite A forever so E keeps pulsing and the scope can trigger on it.
+    // The address goes back to 0 each pass, so the panel still shows one A.
+    lcd_show_A();
   }
 
 #else
