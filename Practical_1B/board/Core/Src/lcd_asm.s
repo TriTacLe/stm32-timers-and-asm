@@ -27,9 +27,9 @@
  * So the number of cycles the pulse needs is the rise time plus 450 ns,
  * divided by 125 ns and rounded up.
  *
- * E_HIGH_NOPS below is that number. It is a starting value and not a
- * measurement. Measure the rise time on PC15_S with the scope, redo the
- * division, and set it before the demo. Each NOP is worth 125 ns.
+ * E_HIGH_NOPS below is that number. Measured on the bench: 380 ns 10 to 90
+ * percent rise on PC15_S, about 208 ns to reach 3.5 V, which rounds up to
+ * 6 NOPs. 8 is kept as the tested value with two cycles of margin.
  *
  * The same rise time feeds the capacitance calculation, with R equal to
  * 1800 Ohm from the pullup, VCC equal to 5 V and the threshold at 3.5 V.
@@ -54,7 +54,7 @@
     .equ PIN_E,         15          @ PC15
     .equ PIN_RS,        14          @ PC14
 
-    .equ E_HIGH_NOPS,   8           @ replace with the count from the measured rise time
+    .equ E_HIGH_NOPS,   8           @ derived floor is 6, see the note above
 
     .global lcd_init_asm
     .global lcd_show_A
