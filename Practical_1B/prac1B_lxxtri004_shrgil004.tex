@@ -3,7 +3,6 @@
 \documentclass[11pt]{article}
 \usepackage{hyperref}
 \usepackage{graphicx}
-\usepackage[section]{placeins}
 \usepackage[a4paper, margin=2.5cm]{geometry}
 \usepackage{amsmath}
 \usepackage{booktabs}
@@ -195,6 +194,7 @@ with a cold branch predictor and cold caches, the core may still be at a low
 clock frequency, and the scheduler can preempt at any point. Averaging over
 millions of repetitions pushes all of those one-off costs into the noise.
 
+\clearpage
 \section{Board Implementation and Timer Measurement}
 
 \subsection{Fast implementation}
@@ -405,6 +405,7 @@ In Practical 1A the same board produced a 2.0038 s period where 2 s was
 expected, a 0.19\% error consistent with the HSI factory trim tolerance of about
 1\%, so a difference of this order is expected here as well.
 
+\clearpage
 \section{Optimisation Flags}
 
 \subsection{Method}
@@ -633,6 +634,7 @@ the body of \texttt{isqrt\_fast} in \texttt{Core/Src/main.c}, lines 193 to 215,
 at the call site on line 244 and at its other call sites in
 \texttt{verify\_against\_golden} and \texttt{measure\_long\_run}.
 
+\clearpage
 \section{Cycle-Counted Phase Delay}
 
 \subsection{Derivation of the target}
@@ -780,6 +782,7 @@ most, and the ADC sample instant is approximated as 3 cycles after
 effect. Reading the phase on the reconstructed waveform rather than on a
 step edge would need a filter on PA4, which the practical does not ask for.
 
+\clearpage
 \section{Analog Debugging of the LCD Enable Line}
 
 \subsection{Why the first attempt fails}
@@ -931,7 +934,7 @@ is the RC climb through the 1.8 k$\Omega$ pullup.}
 \scopefig{task5-lcd-photo.jpg}{lcd}{The panel driven by the assembly
 routine, showing the letter A at the first column of the first line.}
 
-\FloatBarrier
+\clearpage
 \section*{References}
 
 \begin{itemize}
