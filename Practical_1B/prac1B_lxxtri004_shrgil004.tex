@@ -116,7 +116,7 @@ The two runs differ by 0.442 ns, which is 16.15\% of the mean. This difference i
 \noindent
 The mean of 2.738 ns sits close below the 3.1 ns predicted. The prediction
 assumed roughly 10 cycles of work per call at 3.2 GHz. The measurement coming
-in slightly under that could mean that the the CPU may be working on several loop iterations at once rather than completely finishing one before beginning the next.
+in slightly under that could mean that the CPU may be working on several loop iterations at once rather than completely finishing one before beginning the next.
 
 \subsection{Output table for the ten inputs}
 
@@ -931,7 +931,7 @@ Measurement & Result \\
 \midrule
 Settled \texttt{PC15} high level & approximately 3.60 V \\
 Maximum measured \texttt{PC15\_S} level & 4.87 V \\
-\texttt{PC15\_S} 10--90\% rise time & 250 ns \\
+\texttt{PC15\_S} 10 to 90\% rise time & 250 ns \\
 Time for \texttt{PC15\_S} to reach 3.5 V & 220 ns \\
 Corrected Enable pulse width & 1.250 $\mu$s \\
 \bottomrule
@@ -1112,7 +1112,7 @@ high time of 1.250 $\mu$s. After subtracting the 220 ns required to reach
 With the eight NOP pulse, \texttt{PC15\_S} reached 4.87 V and remained above
 3.5 V for longer than the minimum interval specified by the HD44780. The LCD
 was successfully initialised in 4 bit mode and displayed the character
-\texttt{A} in the first column of the first line. See Figure 15 for evidence.
+\texttt{A} in the first column of the first line. See Figure~\ref{fig:lcd} for evidence.
 
 The loan board's ability to reach nearly 5 V is explained by the 5 V pull-up
 on the shifted side of the NMOS level shifter. It is not evidence that the
