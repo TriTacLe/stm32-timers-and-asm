@@ -10,3 +10,22 @@ The repository is organised as follows:
 
 ## Practicals Overview
 Each practical is geared to run concurrently with what is taught in class
+
+## Reading the Practical 1B report
+
+From the repository root, build the LaTeX report with:
+
+```sh
+make report
+```
+
+Use `make view-report` to build and open the PDF. To first pull the newest
+changes from the shared `main` branch, then build and open it, run:
+
+```sh
+make latest
+```
+
+The report prefers `pdflatex` (included with MacTeX on macOS) and falls back to
+Tectonic for a lightweight local preview. The generated PDF and LaTeX temporary
+files stay local and are ignored by Git.

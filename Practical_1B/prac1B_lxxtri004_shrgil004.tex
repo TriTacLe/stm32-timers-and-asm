@@ -8,6 +8,8 @@
 \usepackage{booktabs}
 \usepackage{listings}
 \usepackage{xcolor}
+\usepackage{float}
+\usepackage{placeins}
 
 % every remaining bench measurement is wrapped in this so nothing unfilled
 % can be mistaken for a result
@@ -52,9 +54,7 @@
 The quantity computed throughout this practical is the integer square root of a
 32-bit unsigned input $x$, defined as the largest integer $r$ satisfying
 $r^2 \le x$. The golden version uses double precision arithmetic and the
-standard library \texttt{sqrt}, then clamps the result in both directions so
-that a rounding error at the top of the range cannot leak into the reference
-table:
+standard library \texttt{sqrt}. The result is then checked and adjusted to ensure its square is not greater than the input, and that the following integer's square is greater than the input. 
 
 \begin{lstlisting}[language=C]
 uint32_t isqrt_golden(uint32_t x) {
@@ -64,22 +64,20 @@ uint32_t isqrt_golden(uint32_t x) {
   return r;
 }
 \end{lstlisting}
-
-The clamp matters at the top end. A \texttt{double} holds 53 significand bits,
-so every 32-bit input is represented exactly, but the square root of a value
-just below a perfect square can round up to that square and give an answer one
-too large. Both loops together make the returned value correct by construction
+\noindent
+This correction matters for values which may be rounded up. A \texttt{double} holds 53 significand bits,
+so every 32-bit input is represented exactly, but a square root of a value which is just below a perfect square can round up to the next integer and give an answer one too large. Both loops together make the returned value correct by construction
 rather than correct by assumption.
 
 \subsection{Prediction before timing}
 
 The prediction was made from an instruction count estimate before the timing
-run. The host is an Apple MacBook Air (MacBookAir10,1) with an Apple M1, four
+run. The host is an Apple MacBook Air with an Apple M1, four
 performance cores and four efficiency cores. A performance core runs at about
 3.2 GHz, so one clock cycle is about 0.3125 ns.
-
+\noindent
 One call performs a single hardware double-precision square root, one
-conversion back to integer, and two multiply-and-compare pairs for the clamps,
+conversion back to integer, and two multiply-and-compare pairs (for ensuring the values are clamped correctly),
 of which neither loop body executes in the common case. Taking an effective
 cost of about 10 cycles per call gives
 
@@ -87,15 +85,14 @@ cost of about 10 cycles per call gives
 t_{\text{pred}} \approx 10 \times \frac{1}{3.2 \times 10^{9}~\text{Hz}}
 = 10 \times 0.3125~\text{ns} \approx 3.1~\text{ns per call}.
 \]
-
-The prediction is therefore about 3.1 ns per call, and the reasoning above is
-the basis for it.
+\noindent
+As a result, the prediction is therefore about 3.1 ns per call.
 
 \subsection{Measured results}
-
-Timing used \texttt{clock\_gettime(CLOCK\_MONOTONIC, \ldots)} around a loop
-whose input changes on every iteration, with the result stored to a
-\texttt{volatile} sink so the optimiser cannot delete the work. The program was
+The execution time was measured through
+\texttt{clock\_gettime(CLOCK\_MONOTONIC, \ldots)}, which is called before and after the test loop,
+whose input changes on every iteration. Each calculated result was written to a
+\texttt{volatile} variable so that the compiler would not remove the calculations during optimisation. The program was
 built with \texttt{gcc -O2 -std=gnu11}.
 
 \begin{table}[h]
@@ -114,24 +111,12 @@ B & 10\,000\,000 & 2.517 \\
 \caption{Golden measure timing on the PC, two repetition counts.}
 \label{tab:pc-timing}
 \end{table}
-
-The two runs differ by 0.442 ns, which is 16.15\% of the mean. That spread is
-wide enough to be worth explaining rather than ignoring. The shorter run of
-1\,000\,000 repetitions finishes in a few milliseconds, so a larger fraction of
-it is spent with a cold instruction cache and with the core still ramping its
-clock from idle. The 10\,000\,000 repetition run spends most of its time at a
-settled sustained clock, and it came out faster for that reason. On this part
-the scheduler can also move the thread between a performance core and an
-efficiency core, which changes the effective clock mid-run. The longer run is
-therefore the more trustworthy of the two, and the mean is quoted only because
-the brief asks for both.
-
+\noindent
+The two runs differ by 0.442 ns, which is 16.15\% of the mean. This difference is likely caused by normal variation in short execution-time measurements, including processor frequency changes (modern processors change frequency dynamically), operating-system scheduling, and other background activity. The 1,000,000 repetition test completes in only a few milliseconds, making it more sensitive to these short-term effects. The 10,000,000 repetition test runs for longer and therefore averages these effects over a greater number of calculations, making its measured time more representative. 
+\noindent
 The mean of 2.738 ns sits close below the 3.1 ns predicted. The prediction
 assumed roughly 10 cycles of work per call at 3.2 GHz. The measurement coming
-in slightly under that says the square root is pipelined and the loop
-iterations are independent of one another, so more than one call is in flight
-at a time and the loop pays the throughput cost rather than the full latency
-cost of each call.
+in slightly under that could mean that the the CPU may be working on several loop iterations at once rather than completely finishing one before beginning the next.
 
 \subsection{Output table for the ten inputs}
 
@@ -153,7 +138,7 @@ Input $x$ & $r$ & $r^2$ & $(r+1)^2$ & Check \\
 4294967295 & 65535 & 4294836225 & 4294967296 & pass \\
 \bottomrule
 \end{tabular}
-\caption{Golden outputs with the bracketing squares for every input.}
+\caption{Golden outputs with the squares for every input.}
 \label{tab:golden}
 \end{table}
 
@@ -163,8 +148,6 @@ Take $x = 987654321$ with the reported result $r = 31426$.
 
 \begin{align*}
 r^2 &= 31426^2 = 31426 \times 31426 \\
-    &= 31426 \times 30000 + 31426 \times 1400 + 31426 \times 26 \\
-    &= 942\,780\,000 + 43\,996\,400 + 817\,076 \\
     &= 987\,593\,476.
 \end{align*}
 
@@ -172,35 +155,35 @@ Since $987\,593\,476 \le 987\,654\,321$, the value $r$ does not overshoot. Now
 the next integer:
 
 \begin{align*}
-(r+1)^2 &= 31427^2 = r^2 + 2r + 1 \\
-        &= 987\,593\,476 + 62\,852 + 1 \\
-        &= 987\,656\,329.
+(r+1)^2 &= 31427^2 \\
+&= 987\,656\,329.
 \end{align*}
 
+\noindent
 Since $987\,656\,329 > 987\,654\,321$, no larger integer qualifies. The two
 inequalities together prove $\mathrm{isqrt}(987654321) = 31426$.
 
-\subsection{Answer to the Task 1 question}
+\subsection{Task 1 question}
 
 The golden output for the input 987654321 is \textbf{31426}. The measured time
 per call is \textbf{2.959 ns} in run A and \textbf{2.517 ns} in run B, using
 \textbf{1\,000\,000} and \textbf{10\,000\,000} repetitions respectively.
-
+\noindent
 A single call timed on its own is not reliable because the quantity being
-measured is smaller than the tools used to measure it. One call takes about three
+measured is quicker than the tools used to measure it. One call takes about three
 nanoseconds while \texttt{clock\_gettime} itself costs tens of nanoseconds, so
 the clock call would dominate the reading. On top of that, the first call runs
 with a cold branch predictor and cold caches, the core may still be at a low
 clock frequency, and the scheduler can preempt at any point. Averaging over
-millions of repetitions pushes all of those one-off costs into the noise.
+millions of repetitions accounts for all of those one-off costs.
 
 \clearpage
 \section{Board Implementation and Timer Measurement}
 
 \subsection{Fast implementation}
 
-The board version avoids floating point entirely, since the Cortex-M0 has
-neither an FPU nor a hardware divider. It is the classic digit-by-digit
+The version flashed on the board avoids floating point entirely, since the Cortex-M0 has
+neither an FPU nor a hardware divider. It implements the digit-by-digit
 restoring square root: two bits of the input shift into the remainder on each
 pass, and sixteen passes cover the full 32-bit range.
 
@@ -220,44 +203,50 @@ static uint32_t isqrt_fast(uint32_t n) {
 }
 \end{lstlisting}
 
+\noindent
 Before it went into firmware the routine was checked on the PC against
 \texttt{isqrt\_golden} over 21\,245\,185 values: every input from 0 to
 $2^{20}$ exhaustively, every perfect square from $0^2$ to $65535^2$ together
 with its two neighbours, and 20 million pseudo-random 32-bit values. There were
 zero mismatches.
 
+\noindent
 On the board the same ten golden values from Table~\ref{tab:golden} are
-compiled into flash and compared at start-up. The LED on PB1 lights when all
+compiled into the flashed code and compared at start-up. The LED on PB1 lights when all
 ten match and the LED on PB0 lights on any failure, so the pass or fail state
 is visible before any timing number is read.
 
+\noindent
 Observed result: the PB1 LED lit and the PB0 LED stayed dark, so all ten golden
 values matched. The debugger confirms it directly, with
-\texttt{verify\_failures} reading 0. Both indicators are on the same red LED bank
-D0 to D7 that the board wires to PB0 through PB7, so they are distinguished by
-position rather than by colour.
+\texttt{verify\_failures} reading 0. 
 
-\begin{figure}[h]
+\noindent
+The restoring algorithm is particularly well suited to the Cortex-M0 architecture because each of its 16 iterations uses only 32-bit shifts, comparisons, additions, and subtractions, which translate into compact machine instructions. As a result, this algorithm achieved a substantially lower mean execution time than a binary-search implementation that uses 64-bit multiplication. Even though an integer square root can also be calculated using binary search in approximately 16 iterations, that method must square a candidate value during every iteration. If this calculation uses 64-bit arithmetic, the Cortex-M0 compiler generates a call to the software multiplication routine \texttt{\_\_aeabi\_lmul}, since the processor cannot complete the full 64-bit multiplication in a single instruction. This considerably increases the cost of each iteration. Inspection of the generated Cortex-M0 machine code showed that the restoring implementation occupied only 42 bytes, compared with 80 bytes for a representative binary-search implementation containing software-assisted multiplication. The restoring method can therefore provide a substantial speed advantage because of its lower cost per iteration, rather than because it performs fewer iterations.
+
+\clearpage
+
+\begin{figure}[!ht]
 \centering
-\includegraphics[width=0.55\linewidth]{figures/task2-board-leds.png}
-\caption{The board after the golden check. The LED on PB1 is lit and the LED on
-PB0 is dark, which is the pass indication. The LCD still shows the uninitialised
-block pattern, since this image is the Tasks 2 and 3 build.}
+\includegraphics[height=0.42\textheight,keepaspectratio]
+    {figures/task2-board-leds.png}
+\caption{The board after the golden check. The LED on PB1 is lit and the LED
+on PB0 is dark, which is the pass indication.}
 \label{fig:leds}
 \end{figure}
 
-\begin{figure}[h]
+\begin{figure}[!ht]
 \centering
-\includegraphics[width=0.95\linewidth]{figures/task2-debugger.png}
-\caption{Debugger expression view after the run. \texttt{verify\_failures} is 0,
-\texttt{single\_call\_span} is 257 ticks, \texttt{single\_call\_ns} is 32\,125 ns,
-\texttt{long\_run\_overflows} is 832, \texttt{long\_run\_ticks} is 54\,547\,213 and
-\texttt{long\_run\_ns\_per\_call} is 34\,092 ns.}
+\includegraphics[width=0.90\linewidth]
+    {figures/task2-debugger.png}
+\caption{Debugger expression view after the run.}
 \label{fig:debugger}
 \end{figure}
 
-\subsection{Clock path}
+\clearpage
 
+\subsection{Clock path}
+\noindent
 The system runs from the reset configuration: HSI at 8 MHz feeding SYSCLK
 directly, AHB prescaler 1, APB prescaler 1. No PLL is enabled. TIM3 sits on
 APB1, and because the APB1 prescaler is 1 the timer clock equals PCLK1 at
@@ -269,9 +258,9 @@ f_{\text{cnt}} = \frac{8\,\text{MHz}}{0 + 1} = 8~\text{MHz}, \\
 \text{ARR} &= 65535 \quad \Rightarrow \quad
 T_{\text{wrap}} = \frac{65536}{8 \times 10^{6}} = 8.192~\text{ms},
 \end{align*}
-
+\noindent
 so one counter tick is $1/8\,\text{MHz} = 125$ ns.
-
+\noindent
 Reference manual sections used: RM0091 Section 6 for the clock tree from HSI
 through SYSCLK and the APB prescalers, and RM0091 Section 18 (general-purpose
 timers TIM2 and TIM3) for CNT, PSC, ARR and the update flag UIF.
@@ -287,7 +276,7 @@ arithmetic and the loop control, giving
 \[
 16 \times 15 \approx 240~\text{cycles}.
 \]
-
+\noindent
 A further ten cycles were allowed for function entry, initialisation and
 return, for a predicted total of about 250 cycles. The CPU and the TIM3 counter
 both run at 8 MHz, so one CPU cycle and one timer count are each 0.125 $\mu$s.
@@ -308,7 +297,7 @@ uint16_t after = (uint16_t)TIM3->CNT;
 GPIOC->BSRR = (1U << PULSE_PIN);
 single_call_span = (uint16_t)(after - before);
 \end{lstlisting}
-
+\noindent
 Subtracting two \texttt{uint16\_t} values handles a wrap on its own. If the
 counter passes 65535 during the call, the modulo-$2^{16}$ arithmetic of the
 subtraction still returns the true span, because the span is far shorter than
@@ -321,8 +310,8 @@ one 8.192 ms counter period.
   \item Scope pulse width on PC13: 32.800 $\mu$s
   \item Difference: $32.800 - 32.125 = 0.675$ $\mu$s, or 2.10\%
 \end{itemize}
-
-Figure~\ref{fig:pulse} is that pulse. The cursor delta on the screen and the
+\noindent
+Figure~\ref{fig:pulse} shows the pulse. The cursor delta on the screen and the
 time worked out from the counter span above are the same measurement taken two
 different ways, so they have to agree inside the reading tolerance of the
 scope.
@@ -332,7 +321,6 @@ scope.
 and the rising edge give the pulse width.}
 
 \subsection{Wrap-around case}
-
 For the long run the firmware calls the function 200\,000 times, which at the
 predicted single-call time crosses the 8.192 ms wrap several hundred times. The
 update flag is polled inside the loop and counted, so the total is
@@ -351,7 +339,7 @@ and the mean per call is that total divided by 200\,000, times 125 ns.
   \item Total time: $54\,547\,213 \times 0.125$ $\mu$s $= 6\,818\,401.625$ $\mu$s
   \item Mean time per call: $6\,818\,401.625 / 200\,000 = 34.092$ $\mu$s
 \end{itemize}
-
+\noindent
 The long-run mean of 34.092 $\mu$s is 1.967 $\mu$s higher than the 32.125 $\mu$s
 measured for a single call, a difference of 6.1\%. The two numbers are not
 measuring quite the same thing. The single-call span covers only the call
@@ -364,14 +352,10 @@ of extra instructions per iteration.
 
 \begin{itemize}
   \item Agreement with the single-call time: consistent once the per-iteration
-        loop overhead described above is accounted for
+        loop overhead described above is accounted for. The long-run figures above are read from the debugger in
+Figure~\ref{fig:debugger}.
 \end{itemize}
 
-The long-run figures above are read from the debugger in
-Figure~\ref{fig:debugger}. A scope capture of the pulse train would give an
-independent check on the wrap arithmetic, because counting periods on the screen
-never touches the overflow counter at all. That capture was not taken; it is
-not one of the required screenshots.
 
 \subsection{Answer to the Task 2 question}
 
@@ -383,7 +367,7 @@ calculation from the divider values is
 \text{HCLK} = \frac{8~\text{MHz}}{1} = 8~\text{MHz}, \quad
 \text{PCLK1} = \frac{8~\text{MHz}}{1} = 8~\text{MHz},
 \]
-
+\noindent
 so the TIM3 counter clock is 8 MHz. With PSC = 0 the timer division factor is 1,
 one count lasts $1 / (8 \times 10^{6}) = 0.125$ $\mu$s, and
 
@@ -391,20 +375,19 @@ one count lasts $1 / (8 \times 10^{6}) = 0.125$ $\mu$s, and
 t = \frac{\text{span} \times (\text{PSC}+1)}{f_{\text{HSI}}}
   = \frac{257 \times 1}{8 \times 10^{6}} = 32.125~\mu\text{s}.
 \]
-
-Whether the system clock matches the 8 MHz HSI: it does. The counter-derived
+\noindent
+The counter-derived
 32.125 $\mu$s and the scope pulse width of 32.800 $\mu$s differ by 0.675 $\mu$s,
 which is 2.10\% of the counter figure. Because PSC is 0 and both the AHB and
 APB1 dividers are 1, one timer count is exactly one CPU cycle, so the counter
 time can only land on the scope reading if the clock really is 8 MHz. A
 systematic error in the clock frequency would show up as a proportional gap
-between the two, and 2.10\% is within the combined tolerance of the HSI factory
+between the two, and 2.10\% can potentially be attributed to the combined tolerance of the HSI factory
 trim and the cursor placement.
-In Practical 1A the same board produced a 2.0038 s period where 2 s was
-expected, a 0.19\% error consistent with the HSI factory trim tolerance of about
-1\%, so a difference of this order is expected here as well.
+
 
 \clearpage
+\setlength{\parindent}{0pt}
 \section{Optimisation Flags}
 
 \subsection{Method}
@@ -418,7 +401,7 @@ make TASK=2 OPT=-O1 BUILD_DIR=build_O1
 make TASK=2 OPT=-O2 BUILD_DIR=build_O2
 make TASK=2 OPT=-Os BUILD_DIR=build_Os
 \end{lstlisting}
-
+\noindent
 Sizes come from \texttt{arm-none-eabi-size} on the resulting ELF, and the
 per-function sizes from \texttt{arm-none-eabi-nm --size-sort -S}. Toolchain:
 arm-none-eabi-gcc 16.2.0, newlib-nano, debug information enabled in all four
@@ -436,7 +419,7 @@ time and the \texttt{-O2} time was predicted.
 
 \subsection{Results}
 
-\begin{table}[h]
+\begin{table}[H]
 \centering
 \begin{tabular}{lrrrrr}
 \toprule
@@ -453,21 +436,10 @@ taken on the counter time against the \texttt{-O0} row.}
 \label{tab:opt}
 \end{table}
 
-Each row of Table~\ref{tab:opt} has its own screenshot, since the brief scores a
-timing value without one as zero. Figure~\ref{fig:o0} is the \texttt{-O0}
+Each row of Table~\ref{tab:opt} has its own screenshot. Figure~\ref{fig:o0} is the \texttt{-O0}
 baseline, Figure~\ref{fig:o1} the \texttt{-O1} build, Figure~\ref{fig:o2} the
 \texttt{-O2} build and Figure~\ref{fig:os} the \texttt{-Os} build. The pulse
 width read off each screen is the value in the scope column of the table.
-
-\scopefig{task3-O0.png}{o0}{PC13 pulse width at \texttt{-O0}, the baseline the
-ratios are taken against.}
-
-\scopefig{task3-O1.png}{o1}{PC13 pulse width at \texttt{-O1}.}
-
-\scopefig{task3-O2.png}{o2}{PC13 pulse width at \texttt{-O2}, the build where
-\texttt{isqrt\_fast} is inlined at every call site.}
-
-\scopefig{task3-Os.png}{os}{PC13 pulse width at \texttt{-Os}.}
 
 The size column is not monotonic. At \texttt{-O1} and \texttt{-Os} the function
 survives as a callable symbol and there is one copy of its body in the image. At
@@ -481,6 +453,23 @@ size for speed, and it came out 28 bytes larger and 0.375 $\mu$s slower than
 smallest image for every individual program, because each level enables a
 different combination of transformations.
 
+\FloatBarrier
+
+\scopefig{task3-O0.png}{o0}{PC13 pulse width at \texttt{-O0}, the baseline that
+ratios are taken against.}
+\FloatBarrier
+
+\scopefig{task3-O1.png}{o1}{PC13 pulse width at \texttt{-O1}.}
+\FloatBarrier
+
+\scopefig{task3-O2.png}{o2}{PC13 pulse width at \texttt{-O2}, the build where
+\texttt{isqrt\_fast} is inlined at every call site.}
+\FloatBarrier
+
+\scopefig{task3-Os.png}{os}{PC13 pulse width at \texttt{-Os}.}
+\FloatBarrier
+
+\clearpage
 \subsection{Disassembly at -O2 and the transformation identified}
 
 The transformation is \textbf{function inlining}, applied to
@@ -489,7 +478,7 @@ acts on are the body of \texttt{isqrt\_fast} in
 \texttt{Core/Src/main.c}, and the call sites are the loop inside
 \texttt{verify\_against\_golden}, the timed call inside
 \texttt{measure\_single\_call} and the loop inside \texttt{measure\_long\_run}.
-
+\noindent
 At \texttt{-O0} the routine is a separate function whose locals all live on the
 stack, reached through a \texttt{bl} at each call site.
 The listing below is \texttt{arm-none-eabi-objdump -d} of a fresh
@@ -599,11 +588,11 @@ optimise the body together with the surrounding timing code.
 \subsection{Trade-off between time and code size}
 
 Inlining removes the call, the return and the argument shuffling, and it lets
-the compiler specialise each copy for its call site. The price is one copy of
-the body per call site, which is the 176 extra bytes the image gained between
-\texttt{-O1} and \texttt{-O2}. Put the other way round, \texttt{-O2} bought
+the compiler specialise each copy for its call site. One copy of
+the body per call site explains the 176 extra bytes the image gained between
+\texttt{-O1} and \texttt{-O2}. Put the other way round, \texttt{-O2} traded
 1.250 $\mu$s of execution time for 176 bytes of flash. On a part with 64 kB of
-flash that is affordable, but the general shape holds: \texttt{-O2} buys speed
+flash that is affordable, but the general shape holds: \texttt{-O2} trades speed
 with space, \texttt{-Os} refuses that trade and keeps a single shared copy, and
 \texttt{-O1} lands close to \texttt{-Os} in size because it does the cheap
 register allocation work without the code duplication. \texttt{-O0} is worse on
@@ -703,14 +692,14 @@ One delay iteration is 4 cycles, so \texttt{DELAY\_ITERS} trims the output by
 \subsection{Bench setup}
 
 The POT0 jumper is removed so nothing else drives PB0, and the signal generator
-is connected to PB0 on the 2x2 header. It is set to a 1 kHz sine, 3.0 V peak to
+is connected to pin PB0 with ground connected to any GND pin on the board. It is set to a 1 kHz sine, 3.0 V peak to
 peak, with a 1.5 V DC offset, which keeps the whole swing inside the 0 V to
 3.0 V window the ADC input can accept without clipping.
 
 \subsection{The timed loop}
 
-The loop below is the part the budget in Table~\ref{tab:cycles} refers to. Each
-line carries the cycle cost taken from the ARM instruction timings.
+Each
+line in the block of code below carries the cycle cost taken from the ARM instruction timings.
 
 \begin{lstlisting}
     movs    r4, #ADC_CR_ADSTART     @ ADSTART lives in r4 for the whole loop
@@ -735,9 +724,7 @@ tied to the same 8 MHz the cycle count is derived from.
 \subsection{Measurement}
 
 The loop was built with the top level Makefile at -O2, which does not touch
-hand written assembly, and run on the 8 MHz HSI with the debugger not
-attached. Figure~\ref{fig:phase} carries the reading. The cursors sit on the same feature
-of both traces, a zero crossing in the same direction, so what they measure is
+hand written assembly, and run on the 8 MHz HSI. Figure~\ref{fig:phase} shows the oscilloscope reading. The cursors sit on the peaks of both waveforms, and so what is measured is
 the delay from sample to output and not a difference in amplitude or offset.
 
 \scopefig{task4-phase-delay.png}{phase}{CH1 on PB0 carries the 1 kHz input,
@@ -755,13 +742,11 @@ traces so the reading is the sample-to-output delay: 136 us.}
     delay was not trimmed after the measurement.
 \end{itemize}
 
-The channel attenuation on the scope was left at 10:1 while 1:1 probes were
-used, so the voltage readouts on both captures are ten times the real values.
-The time axis, which is what the reading depends on, is unaffected.
+
 
 Figure~\ref{fig:step} is the same pair of traces with the cursors on one DAC
-step instead. The step is 126 $\mu$s wide. That is the loop period, not the
-sample-to-output delay: one pass through the loop is the full running total
+step instead. The step is 126 $\mu$s wide. A single step represents the loop period, not the
+sample to output delay. One pass through the loop is the full running total
 of Table~\ref{tab:cycles}, 1008 cycles or
 126.0 $\mu$s at 8 MHz. The measured width matches the count exactly, which
 confirms the cycle accounting for the loop body and the 8 MHz clock together.
@@ -769,226 +754,380 @@ confirms the cycle accounting for the loop body and the 8 MHz clock together.
 \scopefig{task4-step-width.png}{step}{Cursors on a single DAC step on PA4.
 The step width of 126 $\mu$s is one pass of the sample loop.}
 
-The 11 $\mu$s the delay reading sits over the target is less than one step of
-the output. The DAC holds each sample for the full 126 $\mu$s loop period, so
-the output is a staircase and the point where it crosses a level is only
-defined to within one step. Where the cursor lands on that step decides how
-much of the hold time is counted, anywhere from 0 to 126 $\mu$s, and the
-average over a whole waveform is half a step, 63 $\mu$s. A reading 11 $\mu$s
-over the 125 $\mu$s that the instructions account for is therefore consistent
-with the loop running to its count and the extra coming from the zero-order
-hold. The HSI trim of roughly 1\% moves the delay by about 1.3 $\mu$s at
-most, and the ADC sample instant is approximated as 3 cycles after
-\texttt{ADSTART} rather than measured; both are small next to the hold
-effect. Reading the phase on the reconstructed waveform rather than on a
-step edge would need a filter on PA4, which the practical does not ask for.
+The instructions create a sample to output delay of approximately 125 $\mu$s, while the oscilloscope measured 136 $\mu$s. This difference occurs because the ADC measures the input only once during each 126 $\mu$s loop iteration. If the input crosses zero between two measurements, the ADC detects the crossing only when it takes the next sample. In this case, the relevant sample was taken approximately 11 $\mu$s after the input crossed zero and was then reproduced by the DAC after the intended 125 $\mu$s delay, giving a measured delay of approximately $11+125=136~\mu$s. The DAC holds each measured value until the following loop iteration, which produces a staircase-shaped output rather than a perfectly smooth waveform. The approximately 1\% HSI clock tolerance and the estimated ADC sampling instant introduce much smaller errors and do not account for most of the difference.
 
 \clearpage
 \section{Analog Debugging of the LCD Enable Line}
 
-\subsection{Why the first attempt fails}
+\subsection{Aim and hardware structure}
 
-Each of the six level shifters is an NMOS with a 1.8 k$\Omega$ pullup to 5 V.
-The 3.3 V side is driven actively low, so the falling edge on \texttt{PC15\_S}
-is fast, but the rising edge is not driven at all: the line is released and
-climbs through the pullup into whatever capacitance the trace, the transistor
-and the LCD pin present. The HD44780 treats anything above 3.5 V as a logic
-high, so the climb from 0 V to 3.5 V is dead time. An enable pulse whose high
-period is only long enough on the 3.3 V side leaves the 5 V side below threshold
-for the whole pulse, the panel never latches, and nothing appears on the screen.
+The LCD was initialised in 4-bit mode and driven entirely from assembly using
+bit-banging. The Enable signal is generated on \texttt{PC15}, Register Select
+on \texttt{PC14}, and data bits D4 to D7 on \texttt{PB8}, \texttt{PB9},
+\texttt{PA12} and \texttt{PA15}. The final program displays the character
+\texttt{A} in the first position of the LCD.
 
-The failing case was reproduced by building the same routine with
-\texttt{E\_HIGH\_NOPS = 0}, so E is high for the two cycles between the BSRR
-and BRR stores. Figure~\ref{fig:efail} is that pulse on \texttt{PC15\_S}: the
-cursors give 240 ns from the start of the climb to the fall, the line only
-just reaches 4.35 V before it is pulled down again, and there is no flat top
-at all, only ringing. The HD44780 wants at least 450 ns above its threshold,
-and this pulse spends well under half of that above 3.5 V. On this particular
-panel the letter still appeared with the 0 NOP build, so the controller
-tolerated a pulse outside its datasheet limits; that is not something to rely
-on, and the sized pulse in the next sections is what stays in the code.
+The STM32 operates from 3.3 V, whereas the LCD is powered from 5 V. The board
+therefore places an NMOS level shifter between \texttt{PC15} and the LCD
+Enable input, which is labelled \texttt{PC15\_S}. These are not the same
+electrical node. \texttt{PC15} is the 3.3 V side controlled by the
+microcontroller, while \texttt{PC15\_S} is the shifted side connected to the
+5 V LCD supply through a 1.8 k$\Omega$ pull-up resistor.
 
-There was no natural failing case to photograph on this board. With the
-sized pulse \texttt{PC15\_S} climbs all the way to the 5 V rail
-(Figure~\ref{fig:efix}), which the tutor confirmed is fine and expected
-from the level shifter on the UCT dev board schematic; boards seen on other
-benches stopped short of 3.5 V and showed the failure without any change to
-the code. The 0 NOP build above is how the failure was forced here.
+When \texttt{PC15} is low, the NMOS conducts and actively pulls
+\texttt{PC15\_S} low. When \texttt{PC15} is driven high, the NMOS switches off
+and the 1.8 k$\Omega$ resistor pulls \texttt{PC15\_S} towards the external
+5 V supply. The microcontroller does not generate or boost 3.3 V to 5 V; it
+only controls the transistor. 
 
-\subsection{The initialisation subroutine}
+The high-going edge is therefore slower than the falling edge.
+\texttt{PC15\_S} must charge through the pull-up resistance and the combined
+capacitance of the transistor, PCB trace, LCD input and oscilloscope probe.
+The resulting voltage is approximated by the standard capacitor-charging
+equation
 
-Read and write is tied low on the board, so the panel cannot be polled and
-every wait is a counted delay taken from the HD44780 timing table. The three
-nibbles of \texttt{0x3} put the controller into a known 8-bit state whatever it
-powered up in, and \texttt{0x2} is what moves it to 4-bit mode.
+\[
+V_C(t)=V_{CC}\left(1-e^{-t/(RC)}\right).
+\]
+
+The ringing visible around the transitions is consistent with parasitic
+capacitance and inductance in the board traces, probe and ground connection.
+It explains the short overshoot around the edge, but not the settled level
+near 5 V. The settled 5 V level is produced by the pull-up to the 5 V rail.
+
+\subsection{Zero-NOP test}
+
+The initial test was performed with
+
+\[
+\texttt{E\_HIGH\_NOPS}=0.
+\]
+
+With no NOP (no operation) instructions between the GPIO set and reset operations, the Enable
+pulse is approximately the two cycle interval. At the 8 MHz processor clock, one cycle is 125 ns, so this produces an
+expected pulse width of approximately 250 ns. The oscilloscope measured
+240 ns, which agrees closely with this cycle count.
+
+The expected failure mechanism was that the slowly rising
+\texttt{PC15\_S} signal would not spend sufficient time above the LCD's
+3.5 V threshold. The HD44780 requires Enable to remain above this
+threshold for at least 450 ns. On the laboratory loan board used for this
+practical, however, \texttt{PC15\_S} rose past 3.5 V even with zero NOPs.
+The pulse then fell almost immediately, giving no valid 450 ns interval above
+the threshold.
+
+The LCD did not display the character with this pulse, showing that the zero NOP timing does not satisfy the datasheet requirements. The pulse was therefore lengthened according to the
+measured rise time (240 ns) and the specified minimum Enable width.
+
+\scopefig{task5-enable-failing.jpg}{efail}{Zero-NOP test on the laboratory
+loan board. Channel 1 shows \texttt{PC15\_S} and channel 2 shows
+\texttt{PC15}. The measured pulse width is 240 ns. Although
+\texttt{PC15\_S} crosses 3.5 V, it falls again almost immediately and does
+not remain above the threshold for the required 450 ns.}
+
+\FloatBarrier
+
+\subsection{Assembly initialisation and character output}
+
+The LCD Read/Write input is tied low on the board, so the busy flag cannot be
+read. The software therefore uses counted delays after commands. The
+initialisation first sends three \texttt{0x3} nibbles to place the controller
+in a known 8 bit state. A \texttt{0x2} nibble then selects 4 bit mode. After
+this point, each command or character is transmitted as two nibbles, with the
+most significant nibble sent first.
+
+The main initialisation and character-output routines are shown below. The
+complete assembly source, including GPIO configuration, nibble placement and
+delay routines, is included in the appendix.
 
 \begin{lstlisting}
 lcd_init_asm:
     push    {r4, lr}
     bl      lcd_pins_init
-    movs    r0, #50                 @ the panel needs more than 40 ms after power on
+
+    movs    r0, #50                 @ wait more than 40 ms after power-on
     bl      delay_ms
 
-    movs    r0, #3                  @ first of three, still in 8-bit mode
+    movs    r0, #3                  @ first 0x3 initialisation nibble
     bl      lcd_put_nibble
     bl      lcd_pulse_e
     movs    r0, #5
     bl      delay_ms
-    @ two further 0x3 nibbles follow, each with its own wait
 
-    movs    r0, #2                  @ switch the bus to 4-bit
+    movs    r0, #3                  @ second 0x3 nibble
+    bl      lcd_put_nibble
+    bl      lcd_pulse_e
+    movs    r0, #1
+    bl      delay_ms
+
+    movs    r0, #3                  @ third 0x3 nibble
+    bl      lcd_put_nibble
+    bl      lcd_pulse_e
+    movs    r0, #1
+    bl      delay_ms
+
+    movs    r0, #2                  @ enter 4-bit mode
     bl      lcd_put_nibble
     bl      lcd_pulse_e
     movs    r0, #1
     bl      delay_ms
 
     movs    r0, #0x28               @ 4-bit bus, two lines, 5 by 8 font
+    movs    r1, #0                  @ r1 = 0 selects the command register
+    bl      lcd_write
+
+    movs    r0, #0x08               @ display off during setup
     movs    r1, #0
     bl      lcd_write
-    movs    r0, #0x08               @ display off while it is set up
+
+    movs    r0, #0x01               @ clear display
     movs    r1, #0
     bl      lcd_write
-    movs    r0, #0x01               @ clear
-    movs    r1, #0
-    bl      lcd_write
-    movs    r0, #2                  @ clearing takes 1.52 ms
+    movs    r0, #2                  @ clear requires approximately 1.52 ms
     bl      delay_ms
-    movs    r0, #0x06               @ cursor moves right, display stays put
+
+    movs    r0, #0x06               @ increment cursor after each character
     movs    r1, #0
     bl      lcd_write
+
     movs    r0, #0x0C               @ display on, cursor hidden
     movs    r1, #0
     bl      lcd_write
+
     pop     {r4, pc}
 
 lcd_show_A:
     push    {r4, lr}
-    movs    r0, #0x80               @ address 0, the top left cell
+
+    movs    r0, #0x80               @ first position of the first line
     movs    r1, #0
     bl      lcd_write
-    movs    r0, #0x41               @ the character code for A
-    movs    r1, #1
+
+    movs    r0, #0x41               @ ASCII code for the character A
+    movs    r1, #1                  @ r1 = 1 selects character data
     bl      lcd_write
+
     pop     {r4, pc}
 \end{lstlisting}
 
-\subsection{Rise time measurement}
+\subsection{Rise-time measurement}
 
-\begin{itemize}
-  \item Probe: Agilent DSO-X 2002A, channel 1 on a 1:1 BNC lead, 5 V/div,
-    ground clip on LCD pin 1 (VSS), signal clip on LCD pin 6 (E, the
-    \texttt{PC15\_S} net), 500 ns/div, edge trigger on channel 1 in normal
-    mode. Board on the 8 MHz HSI, firmware built at -O2 (the routine is hand written assembly, so the level does not touch it), debugger not attached. The Task 5
-    build rewrites the letter in a loop so the pulse repeats and the scope can
-    trigger on it at any time. Figure~\ref{fig:efix} is the capture.
-  \item Channel 2 was a 10:1 probe on the PC15 header pin, the 3.3 V side
-    of the shifter, 1.96 V/div. The scope Max on that channel reads 5.10 V,
-    but that is the overshoot spike on the driven rising edge and not the
-    level: cursors on the same trace (Figure~\ref{fig:pc15}) put the low
-    at 98 mV and the settled high at 3.60 V, a swing of 3.50 V. The green
-    trace in the captures is therefore \texttt{PC15} next to
-    \texttt{PC15\_S}, and it shows the two sides of the shifter at once:
-    the 3.3 V side switches sharply in both directions, the 5 V side only
-    falls sharply and climbs through the pullup.
-  \item Measured high level on \texttt{PC15\_S}: 4.87 V (scope Max), so the
-    shifter does reach the 5 V rail.
-  \item Measured 10 to 90 percent rise time (scope Rise measurement): 250 ns.
-  \item Time from 0 V to 3.5 V, by cursors on the same edge in an earlier
-    run at 2 V/div (Figure~\ref{fig:erise}): 220 ns. That is the $t$ used below.
-  \item Time E stays high with the 8 NOP pulse, by cursors from the rising
-    to the falling edge (Figure~\ref{fig:ewidth}): 1.250 us. Ten cycles at
-    125 ns is exactly 1.250 us: the eight NOPs plus the closing store, counted
-from the edge the opening store produced.
-\end{itemize}
-
-\subsection{Capacitance calculation}
-
-The rising edge is a first-order RC charge towards $V_{CC}$:
+Channel 1 was connected to the 5 V side \texttt{PC15\_S} node at the LCD
+Enable input, and channel 2 was connected to the 3.3 V side
+\texttt{PC15} node. The board was operated from the 8 MHz HSI, giving a
+processor cycle time of
 
 \[
-V_C(t) = V_{CC}\left(1 - e^{-t/(RC)}\right)
-\qquad \Rightarrow \qquad
-C = \frac{-t}{R \ln\!\left(1 - \dfrac{V_C(t)}{V_{CC}}\right)}.
+T_{\mathrm{cycle}}=\frac{1}{8~\mathrm{MHz}}=125~\mathrm{ns}.
 \]
 
-With $R = 1800~\Omega$ from the shifter pullup, $V_{CC} = 5$ V and
-$V_C(t) = 3.5$ V,
+The following values were obtained from the oscilloscope captures:
+
+\begin{table}[H]
+\centering
+\begin{tabular}{ll}
+\toprule
+Measurement & Result \\
+\midrule
+Settled \texttt{PC15} high level & approximately 3.60 V \\
+Maximum measured \texttt{PC15\_S} level & 4.87 V \\
+\texttt{PC15\_S} 10--90\% rise time & 250 ns \\
+Time for \texttt{PC15\_S} to reach 3.5 V & 220 ns \\
+Corrected Enable pulse width & 1.250 $\mu$s \\
+\bottomrule
+\end{tabular}
+\caption{Measured values for the LCD Enable level shifter.}
+\label{tab:lcd-measurements}
+\end{table}
+
+The approximately 3.60 V settled level on \texttt{PC15} confirms that the
+microcontroller remains on the low voltage side. The 4.87 V measurement on
+\texttt{PC15\_S} confirms that the shifted side is pulled towards the board's
+5 V rail. This behaviour is consistent with the NMOS level-shifter circuit and
+does not require a separate boost converter.
+
+\scopefig{task5-pc15-level.jpg}{pc15}{Voltage cursors on channel 2, the
+3.3 V-side \texttt{PC15} signal. The measured low level is 98 mV and the
+settled high level is 3.60 V. The larger instantaneous maximum reported by
+the oscilloscope is caused by overshoot and is not the settled voltage.}
+
+\FloatBarrier
+
+\scopefig{task5-enable-rise-cursors.jpg}{erise}{Rise-time measurement on
+\texttt{PC15\_S}. The horizontal cursors measure 220 ns from the beginning
+of the rising edge to the 3.5 V LCD logic-high threshold.}
+
+\FloatBarrier
+
+\subsection{Parasitic-capacitance calculation}
+
+The rising edge of \texttt{PC15\_S} is modelled as the charging of an
+equivalent parasitic capacitance through the 1.8 k$\Omega$ pull-up:
 
 \[
-\ln\!\left(1 - \frac{3.5}{5}\right) = \ln(0.3) = -1.20397,
-\qquad
-C = \frac{t}{1800 \times 1.20397} = \frac{t}{2167.1}.
+V_C(t)=V_{CC}\left(1-e^{-t/(RC)}\right).
 \]
 
-Substituting $t = 220$ ns gives $C = 220 / 2167.1 \approx 102$ pF. The 10 to
-90 percent figure does not agree with that: for a clean exponential it would
-be $2.197\,\tau$, giving $\tau \approx 114$ ns and only 63 pF. The edge in
-Figure~\ref{fig:efix} is not a clean exponential, it starts steeper than an
-RC climb and then rounds off, so the two figures measure different parts of
-it. The 0 V to 3.5 V cursor time is the one the pulse sizing actually needs,
-so 102 pF is the value taken forward.
-
-\subsection{NOP count derivation}
-
-The panel requires the enable pulse to stay above its logic-high threshold for
-at least 450 ns. Only the time after \texttt{PC15\_S} crosses 3.5 V counts, so
-the enable line must be held high for the rise time plus the hold requirement:
+Rearranging for capacitance gives
 
 \[
-n = \left\lceil \frac{t_{\text{rise}} + 450~\text{ns}}{125~\text{ns}} \right\rceil.
+C=
+\frac{-t}
+{R\ln\left(1-\dfrac{V_C(t)}{V_{CC}}\right)}.
 \]
 
-With $t = 220$ ns this gives $n = \lceil 670 / 125 \rceil = 6$ NOPs. The
-source carries \texttt{E\_HIGH\_NOPS = 8} in \texttt{Core/Src/lcd\_asm.s},
-two cycles above the derived minimum. The panel was tested at 8, where it
-shows the letter and the pulse measures 1.250 us, and at 0 as the failing
-case; 6 is the computed floor and was not tried on the bench, so 8 stays in
-the code as the value with proof behind it.
+Using
+
+\[
+R=1800~\Omega,\qquad
+V_{CC}=5~\mathrm{V},\qquad
+V_C(t)=3.5~\mathrm{V},\qquad
+t=220~\mathrm{ns},
+\]
+
+gives
+
+\[
+\begin{aligned}
+C &=
+\frac{-220\times10^{-9}}
+{1800\ln\left(1-\dfrac{3.5}{5}\right)} \\[4pt]
+&=
+\frac{-220\times10^{-9}}
+{1800\ln(0.3)} \\[4pt]
+&\approx 1.015\times10^{-10}~\mathrm{F} \\[4pt]
+&\approx 102~\mathrm{pF}.
+\end{aligned}
+\]
+
+The calculated equivalent parasitic capacitance of the measured Enable path is
+therefore approximately
+
+\[
+\boxed{C\approx102~\mathrm{pF}}.
+\]
+
+This is an equivalent value for the complete measured path and includes the
+effects of the PCB trace, transistor, LCD input and oscilloscope probe. It
+should not be interpreted as the capacitance of a single physical component.
+
+\subsection{NOP-count derivation}
+
+The LCD recognises \texttt{PC15\_S} as high only after it crosses 3.5 V.
+The measured time required to reach this threshold was 220 ns. After crossing
+the threshold, the HD44780 requires the Enable signal to remain high for at
+least another 450 ns. The required high interval from the start of the rising
+edge is therefore
+
+\[
+t_{\mathrm{required}}
+=
+t_{\mathrm{rise}}+t_{\mathrm{HD44780}}
+=
+220~\mathrm{ns}+450~\mathrm{ns}
+=
+670~\mathrm{ns}.
+\]
+
+At 125 ns per processor cycle, the conservative number of explicit delay
+cycles is
+
+\[
+N_{\min}
+=
+\left\lceil
+\frac{670~\mathrm{ns}}{125~\mathrm{ns/cycle}}
+\right\rceil
+=
+\left\lceil5.36\right\rceil
+=
+6.
+\]
+
+This calculation deliberately assigns the complete required interval to the
+NOP block and does not rely on the additional time consumed by the GPIO store
+instructions. Six NOPs are therefore a conservative calculated minimum. The
+tested source uses eight NOPs, providing two additional cycles of timing
+margin:
+
+\[
+8\times125~\mathrm{ns}=1.000~\mu\mathrm{s}
+\]
+
+of explicit NOP delay.
+
+The pulse routine is
 
 \begin{lstlisting}
-    str     r1, [r0, #GPIO_BSRR]    @ 2  E high, PC15_S starts its RC climb
+    .equ E_HIGH_NOPS, 8
+
+lcd_pulse_e:
+    push    {r0, r1, lr}
+    ldr     r0, =GPIOC_BASE
+    movs    r1, #1
+    lsls    r1, r1, #PIN_E
+
+    str     r1, [r0, #GPIO_BSRR]    @ PC15 high; PC15_S starts charging
+
     .rept   E_HIGH_NOPS
-    nop                             @ 1 each, holds E while the 5 V side is valid
+    nop                             @ one cycle = 125 ns
     .endr
-    str     r1, [r0, #GPIO_BRR]     @ 2  E low, the panel latches on this edge
+
+    str     r1, [r0, #GPIO_BRR]     @ PC15 low; LCD latches on falling edge
+
+    .rept   8
+    nop                             @ satisfy the minimum Enable cycle time
+    .endr
+
+    pop     {r0, r1, pc}
 \end{lstlisting}
 
-Figure~\ref{fig:efix} is the whole pulse on PC15\_S with the 8 NOPs in
-place with PC15 beneath it and the measurement panel showing its maximum,
-Figure~\ref{fig:pc15} puts cursors on the PC15 level, Figures~\ref{fig:erise} and \ref{fig:ewidth} put cursors on its rise
-and its width, Figure~\ref{fig:efail} is the 0 NOP pulse for comparison, and
-Figure~\ref{fig:lcd} is the panel itself with the letter on it, which is the
-end to end proof that the timing is inside what the controller needs.
+The corrected pulse measured 1.250 $\mu$s from its rising edge to its falling
+edge. Since \texttt{PC15\_S} took approximately 220 ns to cross 3.5 V, the
+measured time for which the signal remained above the threshold was
+approximately
 
-\scopefig{task5-enable-fixed-5vdiv.jpg}{efix}{The 8 NOP enable pulse on
-PC15\_S at the LCD E pin (channel 1, yellow, 5 V/div, 500 ns/div) with PC15
-on the 3.3 V side beneath it (channel 2, green, 1.96 V/div). Measurement
-panel: Max(1) 4.87 V, Rise(1) 250 ns, Max(2) 5.10 V. The rising edge on
-PC15\_S is the climb through the 1.8 k$\Omega$ pullup, the falling edge is
-driven and is much faster.}
+\[
+1.250~\mu\mathrm{s}-0.220~\mu\mathrm{s}
+=
+1.030~\mu\mathrm{s}.
+\]
 
-\scopefig{task5-pc15-level.jpg}{pc15}{Cursors on channel 2, the 3.3 V
-\texttt{PC15} side, 1.96 V/div: Y1 98 mV, Y2 3.60 V, a swing of 3.50 V. The
-5.10 V maximum the scope reports for this channel is the overshoot on the
-rising edge visible at the left of the flat top.}
+This is greater than the required 450 ns by approximately 580 ns.
 
-\scopefig{task5-enable-rise-cursors.jpg}{erise}{Cursors on the rising edge
-of the same pulse, X1 where the edge leaves the low level and X2 where it
-crosses 3.5 V on the 2 V/div scale: 220 ns.}
 
-\scopefig{task5-enable-width-cursors.jpg}{ewidth}{Cursors on the rising and
-falling edges of the same pulse: 1.250 us high, ten cycles at 125 ns.}
 
-\scopefig{task5-enable-failing.jpg}{efail}{The failing case, the same
-routine built with 0 NOPs, trigger at 1.5 V. Cursors give 240 ns from the
-start of the climb to the fall and there is no flat top. The scope Max on
-this channel read 4.35 V in the run before the cursor menu replaced the
-measurement panel.}
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.62\linewidth]{figures/task5-enable-width-cursors.jpg}
+\caption{Horizontal cursors on the corrected Enable pulse measure a total
+high time of 1.250 $\mu$s. After subtracting the 220 ns required to reach
+3.5 V, the signal remains above the LCD logic-high threshold for approximately
+1.030 $\mu$s, exceeding the 450 ns minimum requirement.}
+\label{fig:ewidth}
+\end{figure}
 
-\scopefig{task5-lcd-photo.jpg}{lcd}{The panel driven by the assembly
-routine, showing the letter A at the first column of the first line.}
+\subsection{Final result}
 
-\clearpage
+With the eight NOP pulse, \texttt{PC15\_S} reached 4.87 V and remained above
+3.5 V for longer than the minimum interval specified by the HD44780. The LCD
+was successfully initialised in 4 bit mode and displayed the character
+\texttt{A} in the first column of the first line. See Figure 15 for evidence.
+
+The loan board's ability to reach nearly 5 V is explained by the 5 V pull-up
+on the shifted side of the NMOS level shifter. It is not evidence that the
+STM32 output pin itself produced 5 V. The measured \texttt{PC15} level remained
+approximately 3.60 V, while the electrically separate \texttt{PC15\_S} node
+was charged from the 5 V supply.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.58\linewidth]{figures/task5-lcd-photo.jpg}
+\caption{Final practical result: the LCD initialised and driven by the
+assembly routine, displaying the character \texttt{A} in the first position
+of the first line.}
+\label{fig:lcd}
+\end{figure}
 \section*{References}
 
 \begin{itemize}

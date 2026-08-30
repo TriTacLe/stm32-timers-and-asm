@@ -5,7 +5,7 @@
 OPT ?= -O2
 FLASH ?= 0
 
-.PHONY: 1 2 3 4 5 test report clean
+.PHONY: 1 2 3 4 5 test report clean clean-report
 
 1:
 	$(MAKE) -C Task1_PC run
@@ -24,10 +24,20 @@ test:
 	$(MAKE) -C Task1_PC test
 
 report:
-	pdflatex -interaction=nonstopmode -halt-on-error prac1B_lxxtri004_shrgil004.tex
-	pdflatex -interaction=nonstopmode -halt-on-error prac1B_lxxtri004_shrgil004.tex
+	@if command -v pdflatex >/dev/null 2>&1; then \
+	  pdflatex -interaction=nonstopmode -halt-on-error prac1B_lxxtri004_shrgil004.tex && \
+	  pdflatex -interaction=nonstopmode -halt-on-error prac1B_lxxtri004_shrgil004.tex; \
+	elif command -v tectonic >/dev/null 2>&1; then \
+	  tectonic --keep-logs prac1B_lxxtri004_shrgil004.tex; \
+	else \
+	  echo "Error: install pdflatex (preferred) or tectonic." >&2; \
+	  exit 1; \
+	fi
+
+clean-report:
+	rm -f prac1B_lxxtri004_shrgil004.{aux,log,out,toc}
 
 clean:
 	$(MAKE) -C board clean
 	$(MAKE) -C Task1_PC clean
-	rm -f prac1B_lxxtri004_shrgil004.{aux,log,out,toc}
+	$(MAKE) clean-report
